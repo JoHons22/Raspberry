@@ -1,7 +1,6 @@
 import RPi.GPIO as GPIO
 import time
 
-# GPIO pins connected to segments a-g
 segments = {
     'a': 17,
     'b': 18,
@@ -20,18 +19,24 @@ for pin in segments.values():
 
 try:
     while True:
+
+        print("\n===== STARTING GPIO TEST CYCLE =====")
+        time.sleep(0.5)
+
         for segment, pin in segments.items():
 
-            # Turn all segments off
             for p in segments.values():
                 GPIO.output(p, GPIO.LOW)
 
-            # Turn on the segment being tested
             GPIO.output(pin, GPIO.HIGH)
 
             print(f"Testing Segment {segment.upper()} on GPIO {pin}")
 
             time.sleep(1)
+
+        print("===== END OF GPIO TEST CYCLE =====\n")
+
+        time.sleep(2)
 
 except KeyboardInterrupt:
     pass
