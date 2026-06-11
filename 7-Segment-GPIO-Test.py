@@ -20,15 +20,16 @@ for pin in segments.values():
 
 try:
     while True:
-        for name, pin in segments.items():
-            print(f"Testing segment {name}")
+        for segment, pin in segments.items():
 
             # Turn all segments off
             for p in segments.values():
                 GPIO.output(p, GPIO.LOW)
 
-            # Turn on one segment
+            # Turn on the segment being tested
             GPIO.output(pin, GPIO.HIGH)
+
+            print(f"Testing Segment {segment.upper()} on GPIO {pin}")
 
             time.sleep(1)
 
