@@ -1,0 +1,30 @@
+[
+    {
+        "name": "Boot / Model Test",
+        "file": "tests/model_test.py",
+        "instructions": "No setup needed. Verifies that the board reports as a Raspberry Pi 4 Model B.",
+        "timeout": 10,
+        "enabled": true
+    },
+    {
+        "name": "ACT LED Test",
+        "file": "tests/act_led_test.py",
+        "instructions": "Watch the green ACT LED. It should blink five times.",
+        "timeout": 20,
+        "enabled": true
+    },
+    {
+        "name": "UART Loopback Test",
+        "file": "tests/uart_loopback_test.py",
+        "instructions": "Connect GPIO14 TXD to GPIO15 RXD before running.",
+        "timeout": 15,
+        "enabled": true
+    },
+    {
+        "name": "GPIO Test",
+        "file": "tests/gpio_test.py",
+        "instructions": "Connect the GPIO loopback fixture before running.",
+        "timeout": 30,
+        "enabled": true
+    }
+]
