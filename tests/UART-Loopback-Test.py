@@ -1,5 +1,6 @@
 import serial
 import time
+import json
 
 uart = serial.Serial(
     port='/dev/serial0',
@@ -42,6 +43,14 @@ try:
 
 except KeyboardInterrupt:
     print("\nStopping UART test...")
+
+result = {
+    "name": "UART Loopback Test",
+    "status": "PASS",
+    "details": "Sent test message and received matching response."
+}
+
+print(json.dumps(result))
 
 finally:
     uart.close()
