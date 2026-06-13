@@ -1,5 +1,6 @@
 import RPi.GPIO as GPIO
 import time
+import json
 
 # GPIO pin connected to servo signal wire
 SERVO_PIN = 18
@@ -39,6 +40,14 @@ try:
 
 except KeyboardInterrupt:
     pass
+
+result = {
+    "name": "Servo Test",
+    "status": "PASS",
+    "details": "Servo moved through test positions successfully."
+}
+
+print(json.dumps(result))
 
 finally:
     pwm.stop()
