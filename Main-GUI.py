@@ -13,7 +13,8 @@ class PiTesterGUI:
         self.root.title("Raspberry Pi 4B Modular Tester")
         self.root.geometry("950x600")
 
-        self.base_dir = Path(__file__).parent
+        # Locate this GUI file's folder, then find tests.json in that same folder
+        self.base_dir = Path(__file__).resolve().parent
         self.config_path = self.base_dir / "tests.json"
 
         self.tests = self.load_tests()
@@ -25,12 +26,12 @@ class PiTesterGUI:
     def load_tests(self):
         """
         Loads test information from tests.json.
-        The GUI does not need to know the test details directly.
+        The GUI does not directly know which tests exist.
         """
         if not self.config_path.exists():
             messagebox.showerror(
                 "Missing Config",
-                f"Could not find {self.config_path}"
+                f"Could not find tests.json at:\n{self.config_path}"
             )
             return []
 
@@ -250,7 +251,7 @@ class PiTesterGUI:
                     "details": stderr or "No output returned from test file"
                 }
 
-            # Allows the test file to print debug text before the final JSON line.
+            # The test can print debug text, but the final line must be JSON.
             last_line = stdout.splitlines()[-1]
 
             try:
@@ -259,7 +260,7 @@ class PiTesterGUI:
                 return {
                     "name": test_name,
                     "status": "ERROR",
-                    "details": f"Invalid JSON output: {last_line}"
+                    "details": f"Invalid JSON output from test. Last line was: {last_line}"
                 }
 
             result.setdefault("name", test_name)
@@ -283,12 +284,17 @@ class PiTesterGUI:
             }
 
     def add_result_row_safe(self, name, status, details):
+        """
+        Safely add a row to the results table from another thread.
+        The lambda is required because after() does not accept keyword arguments.
+        """
         self.root.after(
             0,
-            self.results_table.insert,
-            "",
-            "end",
-            values=(name, status, details)
+            lambda: self.results_table.insert(
+                "",
+                "end",
+                values=(name, status, details)
+            )
         )
 
     def refresh_results_table_safe(self):
@@ -309,7 +315,13 @@ class PiTesterGUI:
             )
 
     def set_status(self, text):
-        self.root.after(0, self.status_label.config, {"text": text})
+        """
+        Safely update the status label from another thread.
+        """
+        self.root.after(
+            0,
+            lambda: self.status_label.config(text=text)
+        )
 
     def save_results(self):
         if not self.results:
@@ -333,7 +345,7 @@ class PiTesterGUI:
 
         messagebox.showinfo(
             "Results Saved",
-            f"Results saved to {output_file}"
+            f"Results saved to:\n{output_file}"
         )
 
 
