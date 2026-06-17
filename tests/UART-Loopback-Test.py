@@ -40,19 +40,28 @@ try:
     print(f"RX <- {received}")
 
     # Verify
-    if received == message:
+    if received == "":
+        print("STATUS: FAIL - NO DATA RECEIVED")
+        result = {
+            "name": "UART Loopback Test",
+            "status": "FAIL",
+            "details": f"No message was received. Sent '{message}', but RX returned nothing. Check TX-to-RX wiring, UART enable settings, and serial port."
+        }
+    
+    elif received == message:
         print("STATUS: PASS")
         result = {
             "name": "UART Loopback Test",
             "status": "PASS",
             "details": f"Sent '{message}' and received matching response."
         }
+    
     else:
-        print("STATUS: FAIL")
+        print("STATUS: FAIL - DATA MISMATCH")
         result = {
             "name": "UART Loopback Test",
             "status": "FAIL",
-            "details": f"Sent '{message}' but received '{received}'."
+            "details": f"Message mismatch. Sent '{message}', but received '{received}'."
         }
 
     print("================================")
