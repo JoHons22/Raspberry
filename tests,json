@@ -2,14 +2,21 @@
     {
         "name": "Servo Test",
         "file": "tests/Servo-Test.py",
-        "instructions": "Connect the servo to the correct GPIO pin, 5V power, and ground before running. Make sure the servo has enough current and shares ground with the Pi.",
-        "timeout": 30,
+        "instructions": "Connect the servo signal wire to GPIO18, connect servo power, and connect servo ground to Raspberry Pi ground before running.",
+        "timeout": 20,
         "enabled": true
     },
     {
         "name": "UART Loopback Test",
         "file": "tests/UART-Loopback-Test.py",
-        "instructions": "Connect GPIO14 TXD to GPIO15 RXD before running. Make sure serial console is disabled and UART is enabled.",
+        "instructions": "Connect GPIO14 TXD, physical pin 8, to GPIO15 RXD, physical pin 10, before running. Make sure UART is enabled and serial console is disabled.",
+        "timeout": 10,
+        "enabled": true
+    },
+    {
+        "name": "SPI Test",
+        "file": "tests/SPI-Test.py",
+        "instructions": "Enable SPI before running. Wire MOSI GPIO10 pin 19 to MISO GPIO9 pin 21, SCLK GPIO11 pin 23 to GPIO5 pin 29, CE0 GPIO8 pin 24 to GPIO6 pin 31, and CE1 GPIO7 pin 26 to GPIO13 pin 33.",
         "timeout": 20,
         "enabled": true
     }
