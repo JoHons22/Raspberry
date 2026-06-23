@@ -23,7 +23,7 @@
     {
         "name": "Wi-Fi Ping Test",
         "file": "tests/WiFi-Ping-Test.py",
-        "instructions": "Connect the Raspberry Pi to a Wi-Fi network before running. This test forces ping through wlan0 and checks Wi-Fi connection, IP address, internet access, and DNS.",
+        "instructions": "Connect the Raspberry Pi to a Wi-Fi network before running. This test checks wlan0, accepts IPv4 or IPv6, and pings google.com through the Wi-Fi interface.",
         "timeout": 35,
         "enabled": true
     }
