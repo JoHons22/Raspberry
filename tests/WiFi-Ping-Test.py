@@ -21,6 +21,40 @@ def run_command(command, timeout=8):
         return 1, "", str(e)
 
 
+def get_ip_addresses():
+    """
+    Checks wlan0 for IPv4 and IPv6 addresses.
+    Ignores link-local IPv6 addresses starting with fe80 because those do not prove internet access.
+    """
+    ipv4_addresses = []
+    ipv6_addresses = []
+
+    code, stdout, stderr = run_command(
+        ["ip", "addr", "show", "dev", WIFI_INTERFACE],
+        timeout=5
+    )
+
+    if code != 0:
+        return ipv4_addresses, ipv6_addresses
+
+    for line in stdout.splitlines():
+        line = line.strip()
+
+        if line.startswith("inet "):
+            parts = line.split()
+            ipv4_addresses.append(parts[1])
+
+        elif line.startswith("inet6 "):
+            parts = line.split()
+            ipv6 = parts[1]
+
+            # Ignore link-local IPv6 addresses
+            if not ipv6.startswith("fe80"):
+                ipv6_addresses.append(ipv6)
+
+    return ipv4_addresses, ipv6_addresses
+
+
 def main():
     result = {
         "name": TEST_NAME,
@@ -32,7 +66,7 @@ def main():
         print("WI-FI PING TEST")
         print("===============")
         print(f"Testing Wi-Fi interface: {WIFI_INTERFACE}")
-        print("This test checks wlan0, IP address, internet ping, and DNS.")
+        print("This test accepts either IPv4 or IPv6.")
         print()
 
         fail_reasons = []
@@ -52,8 +86,11 @@ def main():
 
         pass_details.append(f"{WIFI_INTERFACE} detected")
 
-        # Check Wi-Fi link status if iw is available
-        code, stdout, stderr = run_command(["iw", "dev", WIFI_INTERFACE, "link"], timeout=5)
+        # Check Wi-Fi link status
+        code, stdout, stderr = run_command(
+            ["iw", "dev", WIFI_INTERFACE, "link"],
+            timeout=5
+        )
 
         if code == 0 and "Connected to" in stdout:
             first_line = stdout.splitlines()[0]
@@ -62,39 +99,53 @@ def main():
         else:
             fail_reasons.append("Wi-Fi is not connected to an access point")
 
-        # Check that wlan0 has an IPv4 address
-        code, stdout, stderr = run_command(["ip", "-4", "addr", "show", "dev", WIFI_INTERFACE], timeout=5)
+        # Check for IPv4 or IPv6 address
+        ipv4_addresses, ipv6_addresses = get_ip_addresses()
 
-        if code == 0 and "inet " in stdout:
-            ip_line = [line.strip() for line in stdout.splitlines() if "inet " in line][0]
-            ip_address = ip_line.split()[1]
-            pass_details.append(f"IPv4 address found: {ip_address}")
-        else:
-            fail_reasons.append(f"No IPv4 address found on {WIFI_INTERFACE}")
+        if ipv4_addresses:
+            pass_details.append(f"IPv4 address found: {ipv4_addresses[0]}")
 
-        # Ping Google DNS by IP address.
-        # This checks internet access without depending on DNS.
-        code, stdout, stderr = run_command(
-            ["ping", "-I", WIFI_INTERFACE, "-c", "4", "-W", "2", "8.8.8.8"],
-            timeout=12
-        )
+        if ipv6_addresses:
+            pass_details.append(f"IPv6 address found: {ipv6_addresses[0]}")
 
-        if code == 0:
-            pass_details.append("Ping to 8.8.8.8 passed")
-        else:
-            fail_reasons.append("Ping to 8.8.8.8 failed")
+        if not ipv4_addresses and not ipv6_addresses:
+            fail_reasons.append(f"No usable IPv4 or IPv6 address found on {WIFI_INTERFACE}")
 
-        # Ping google.com.
-        # This checks both internet and DNS name resolution.
+        # General ping test.
+        # This does NOT force IPv4. It allows the system to use IPv4 or IPv6.
         code, stdout, stderr = run_command(
             ["ping", "-I", WIFI_INTERFACE, "-c", "4", "-W", "2", "google.com"],
             timeout=12
         )
 
         if code == 0:
-            pass_details.append("Ping to google.com passed")
+            pass_details.append("General ping to google.com passed using available IP version")
         else:
-            fail_reasons.append("Ping to google.com failed. DNS or internet access may be unavailable.")
+            fail_reasons.append("General ping to google.com failed")
+
+        # Optional IPv4-specific test, only if IPv4 exists
+        if ipv4_addresses:
+            code, stdout, stderr = run_command(
+                ["ping", "-4", "-I", WIFI_INTERFACE, "-c", "4", "-W", "2", "google.com"],
+                timeout=12
+            )
+
+            if code == 0:
+                pass_details.append("IPv4 ping passed")
+            else:
+                fail_reasons.append("IPv4 address exists, but IPv4 ping failed")
+
+        # Optional IPv6-specific test, only if IPv6 exists
+        if ipv6_addresses:
+            code, stdout, stderr = run_command(
+                ["ping", "-6", "-I", WIFI_INTERFACE, "-c", "4", "-W", "2", "google.com"],
+                timeout=12
+            )
+
+            if code == 0:
+                pass_details.append("IPv6 ping passed")
+            else:
+                fail_reasons.append("IPv6 address exists, but IPv6 ping failed")
 
         print()
         print("FINAL RESULT")
