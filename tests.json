@@ -16,8 +16,15 @@
     {
         "name": "SPI Test",
         "file": "tests/SPI-Test.py",
-        "instructions": "Enable SPI before running. Wire MOSI GPIO10 pin 19 to MISO GPIO9 pin 21, SCLK GPIO11 pin 23 to GPIO5 pin 29, CE0 GPIO8 pin 24 to GPIO6 pin 31, and CE1 GPIO7 pin 26 to GPIO13 pin 33.",
-        "timeout": 20,
+        "instructions": "Enable SPI before running. Wire MOSI GPIO10 pin 19 to MISO GPIO9 pin 21, add a 10k pull-down resistor from MISO GPIO9 pin 21 to GND, wire SCLK GPIO11 pin 23 to GPIO5 pin 29, CE0 GPIO8 pin 24 to GPIO6 pin 31, and CE1 GPIO7 pin 26 to GPIO13 pin 33.",
+        "timeout": 25,
+        "enabled": true
+    },
+    {
+        "name": "Wi-Fi Ping Test",
+        "file": "tests/WiFi-Ping-Test.py",
+        "instructions": "Connect the Raspberry Pi to a Wi-Fi network before running. This test forces ping through wlan0 and checks Wi-Fi connection, IP address, internet access, and DNS.",
+        "timeout": 35,
         "enabled": true
     }
 ]
