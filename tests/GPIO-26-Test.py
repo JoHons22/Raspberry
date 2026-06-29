@@ -4,20 +4,16 @@ import json
 
 TEST_NAME = "GPIO 26-Pin LED Test"
 
-# Set to True for common-cathode LED segments where GPIO HIGH turns LED on.
-# Set to False for common-anode displays where GPIO LOW turns LED on.
+# True = GPIO HIGH turns LED on
+# False = GPIO LOW turns LED on
 ACTIVE_HIGH = True
 
 ON_STATE = GPIO.HIGH if ACTIVE_HIGH else GPIO.LOW
 OFF_STATE = GPIO.LOW if ACTIVE_HIGH else GPIO.HIGH
 
 SEGMENT_HOLD_TIME = 0.5
+ALL_ON_HOLD_TIME = 3
 
-# GPIO 2 through GPIO 27 gives 26 total GPIO pins.
-# Using three 10-segment displays:
-# Display 1 uses GPIO 2-11
-# Display 2 uses GPIO 12-21
-# Display 3 uses GPIO 22-27, leaving 4 segments unused
 display_map = {
     "Display 1": {
         "segment_1": 2,
@@ -69,6 +65,11 @@ def turn_all_off(pins):
         GPIO.output(pin, OFF_STATE)
 
 
+def turn_all_on(pins):
+    for pin in pins:
+        GPIO.output(pin, ON_STATE)
+
+
 def main():
     result = {
         "name": TEST_NAME,
@@ -90,7 +91,7 @@ def main():
         print("GPIO 26-PIN LED TEST")
         print("====================")
         print("This test cycles GPIO 2 through GPIO 27.")
-        print("Use current-limiting resistors on every LED segment.")
+        print("Use one current-limiting resistor per LED segment.")
         print("Display 3 only uses 6 of its 10 segments.")
         print()
 
@@ -110,17 +111,21 @@ def main():
                 print(f"Testing {display_name} {segment_name} on GPIO {pin}")
                 time.sleep(SEGMENT_HOLD_TIME)
 
-        turn_all_off(all_pins)
-
         print()
+        print("===== TURNING ALL LEDS ON =====")
+        turn_all_on(all_pins)
+        time.sleep(ALL_ON_HOLD_TIME)
+
         print("===== END OF GPIO TEST CYCLE =====")
+        turn_all_off(all_pins)
 
         result = {
             "name": TEST_NAME,
             "status": "PASS",
             "details": (
                 f"Commanded {len(tested_pins)} GPIO pins from GPIO 2 through GPIO 27. "
-                "Visual confirmation is required to verify each LED segment lit correctly."
+                f"Each LED was tested individually, then all LEDs were turned on together for "
+                f"{ALL_ON_HOLD_TIME} seconds. Visual confirmation is required."
             )
         }
 
