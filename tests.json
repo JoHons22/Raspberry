@@ -26,5 +26,12 @@
         "instructions": "Connect the Raspberry Pi to a Wi-Fi network before running. This test checks wlan0, accepts IPv4 or IPv6, and pings google.com through the Wi-Fi interface.",
         "timeout": 35,
         "enabled": true
+    },
+    {
+        "name": "GPIO 26-Pin LED Test",
+        "file": "tests/GPIO-26-Test.py",
+        "instructions": "Connect three 10-segment LED displays with current-limiting resistors. GPIO 2 through GPIO 11 go to Display 1, GPIO 12 through GPIO 21 go to Display 2, and GPIO 22 through GPIO 27 go to the first 6 segments of Display 3.",
+        "timeout": 25,
+        "enabled": true
     }
 ]
