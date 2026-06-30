@@ -13,7 +13,6 @@ class PiTesterGUI:
         self.root.title("Raspberry Pi 4B Modular Tester")
         self.root.geometry("950x600")
 
-        # Locate this GUI file's folder, then find tests.json in that same folder
         self.base_dir = Path(__file__).resolve().parent
         self.config_path = self.base_dir / "tests.json"
 
@@ -24,10 +23,6 @@ class PiTesterGUI:
         self.build_gui()
 
     def load_tests(self):
-        """
-        Loads test information from tests.json.
-        The GUI does not directly know which tests exist.
-        """
         if not self.config_path.exists():
             messagebox.showerror(
                 "Missing Config",
@@ -61,7 +56,6 @@ class PiTesterGUI:
         main_frame = ttk.Frame(self.root)
         main_frame.pack(fill="both", expand=True, padx=10, pady=10)
 
-        # Left side: test selection
         left_frame = ttk.LabelFrame(main_frame, text="Available Tests")
         left_frame.pack(side="left", fill="y", padx=5, pady=5)
 
@@ -102,7 +96,6 @@ class PiTesterGUI:
             command=self.save_results
         ).pack(fill="x", padx=8, pady=4)
 
-        # Right side: instructions and results
         right_frame = ttk.Frame(main_frame)
         right_frame.pack(side="right", fill="both", expand=True, padx=5, pady=5)
 
@@ -156,8 +149,16 @@ class PiTesterGUI:
             self.instructions_box.insert("end", f"{test['name']}:\n")
             self.instructions_box.insert(
                 "end",
-                f"{test.get('instructions', 'No instructions provided.')}\n\n"
+                f"{test.get('instructions', 'No instructions provided.')}\n"
             )
+
+            if test.get("requires_observation", False):
+                self.instructions_box.insert(
+                    "end",
+                    "Manual confirmation required after this test runs.\n"
+                )
+
+            self.instructions_box.insert("end", "\n")
 
     def get_selected_tests(self):
         selected = []
@@ -216,6 +217,10 @@ class PiTesterGUI:
 
             result = self.run_test_file(test)
 
+            if self.should_ask_for_observation(test, result):
+                self.set_status(f"Waiting for manual confirmation: {test_name}")
+                result = self.ask_for_manual_confirmation(test, result)
+
             self.results.append(result)
             self.refresh_results_table_safe()
 
@@ -251,7 +256,7 @@ class PiTesterGUI:
                     "details": stderr or "No output returned from test file"
                 }
 
-            # The test can print debug text, but the final line must be JSON.
+            # Test files can print debug text, but the final line must be JSON.
             last_line = stdout.splitlines()[-1]
 
             try:
@@ -283,11 +288,73 @@ class PiTesterGUI:
                 "details": str(e)
             }
 
+    def should_ask_for_observation(self, test, result):
+        """
+        Only ask for manual observation if the test config requires it
+        and the software part of the test did not already fail/error.
+        """
+        if not test.get("requires_observation", False):
+            return False
+
+        status = result.get("status", "ERROR")
+
+        return status in ["PASS", "WARN"]
+
+    def ask_for_manual_confirmation(self, test, result):
+        """
+        Opens a pop-up asking the user if the observed test output passed.
+        This is used for tests like LEDs and audio where software can run the test,
+        but a person must confirm the physical result.
+        """
+
+        response_event = threading.Event()
+        response_holder = {}
+
+        def show_popup():
+            test_name = result.get("name", test.get("name", "Unknown Test"))
+            details = result.get("details", "No details provided.")
+
+            prompt = test.get(
+                "observation_prompt",
+                f"Did the observed output for {test_name} pass?"
+            )
+
+            message = (
+                f"{prompt}\n\n"
+                f"Test details:\n{details}\n\n"
+                "Click Yes if the physical output worked correctly.\n"
+                "Click No if the physical output did not work correctly."
+            )
+
+            response_holder["passed"] = messagebox.askyesno(
+                "Manual Test Confirmation",
+                message
+            )
+
+            response_event.set()
+
+        self.root.after(0, show_popup)
+        response_event.wait()
+
+        user_confirmed_pass = response_holder.get("passed", False)
+
+        updated_result = dict(result)
+        original_details = updated_result.get("details", "")
+
+        if user_confirmed_pass:
+            updated_result["status"] = "PASS"
+            updated_result["details"] = (
+                f"{original_details} Manual observation: PASS."
+            )
+        else:
+            updated_result["status"] = "FAIL"
+            updated_result["details"] = (
+                f"{original_details} Manual observation: FAIL."
+            )
+
+        return updated_result
+
     def add_result_row_safe(self, name, status, details):
-        """
-        Safely add a row to the results table from another thread.
-        The lambda is required because after() does not accept keyword arguments.
-        """
         self.root.after(
             0,
             lambda: self.results_table.insert(
@@ -315,9 +382,6 @@ class PiTesterGUI:
             )
 
     def set_status(self, text):
-        """
-        Safely update the status label from another thread.
-        """
         self.root.after(
             0,
             lambda: self.status_label.config(text=text)
