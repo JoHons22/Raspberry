@@ -1,47 +1,47 @@
 import json
-import subprocess
-import wave
 import math
 import struct
-from pathlib import Path
+import subprocess
 
 TEST_NAME = "Audio Playback Test"
 
-# Audio file location
-# If this file does not exist, the script will create a simple test tone.
-AUDIO_FILE = Path(__file__).resolve().parent / "test_audio.wav"
+DURATION_SECONDS = 5
+FREQUENCY_HZ = 440
+SAMPLE_RATE = 44100
+CHANNELS = 2
+AMPLITUDE = 18000
 
 
-def create_test_tone(filename, duration=2.0, frequency=440, sample_rate=44100):
+def generate_tone():
     """
-    Creates a short WAV test tone if no audio file is available.
+    Generate a stereo 16-bit PCM sine wave in memory.
+    No audio file is needed.
     """
-    amplitude = 16000
-    total_samples = int(duration * sample_rate)
+    total_samples = int(DURATION_SECONDS * SAMPLE_RATE)
+    fade_samples = int(0.05 * SAMPLE_RATE)
 
-    with wave.open(str(filename), "w") as wav_file:
-        wav_file.setnchannels(1)
-        wav_file.setsampwidth(2)
-        wav_file.setframerate(sample_rate)
+    audio_data = bytearray()
 
-        for i in range(total_samples):
-            sample = amplitude * math.sin(2 * math.pi * frequency * i / sample_rate)
-            wav_file.writeframes(struct.pack("<h", int(sample)))
+    for i in range(total_samples):
+        fade = 1.0
 
+        # Small fade-in and fade-out to avoid popping
+        if i < fade_samples:
+            fade = i / fade_samples
+        elif i > total_samples - fade_samples:
+            fade = (total_samples - i) / fade_samples
 
-def run_command(command, timeout=10):
-    try:
-        completed = subprocess.run(
-            command,
-            text=True,
-            capture_output=True,
-            timeout=timeout
+        sample = AMPLITUDE * fade * math.sin(
+            2 * math.pi * FREQUENCY_HZ * i / SAMPLE_RATE
         )
-        return completed.returncode, completed.stdout.strip(), completed.stderr.strip()
-    except subprocess.TimeoutExpired:
-        return 1, "", "Command timed out"
-    except Exception as e:
-        return 1, "", str(e)
+
+        packed_sample = struct.pack("<h", int(sample))
+
+        # Stereo: left and right channels
+        audio_data.extend(packed_sample)
+        audio_data.extend(packed_sample)
+
+    return bytes(audio_data)
 
 
 def main():
@@ -54,39 +54,57 @@ def main():
     try:
         print("AUDIO PLAYBACK TEST")
         print("===================")
+        print("Generating test tone in software.")
+        print(f"Frequency: {FREQUENCY_HZ} Hz")
+        print(f"Duration: {DURATION_SECONDS} seconds")
+        print("No audio file is required.")
+        print()
 
-        # Create a test tone if the file does not already exist
-        if not AUDIO_FILE.exists():
-            print(f"No audio file found at {AUDIO_FILE}")
-            print("Creating 2-second test tone...")
-            create_test_tone(AUDIO_FILE)
+        audio_data = generate_tone()
 
-        print(f"Playing audio file: {AUDIO_FILE}")
+        command = [
+            "aplay",
+            "-D", "default",
+            "-f", "S16_LE",
+            "-r", str(SAMPLE_RATE),
+            "-c", str(CHANNELS)
+        ]
 
-        # Play WAV file using aplay
-        code, stdout, stderr = run_command(
-            ["aplay", str(AUDIO_FILE)],
-            timeout=10
+        completed = subprocess.run(
+            command,
+            input=audio_data,
+            capture_output=True,
+            timeout=DURATION_SECONDS + 5
         )
 
-        if code == 0:
+        if completed.returncode == 0:
             result = {
                 "name": TEST_NAME,
                 "status": "WARN",
                 "details": (
-                    "Audio file was played successfully by software. "
-                    "Manual listening confirmation is required to verify speaker/headphone output."
+                    f"Generated and played a {DURATION_SECONDS}-second "
+                    f"{FREQUENCY_HZ} Hz test tone. Manual listening confirmation is required."
                 )
             }
             print("AUDIO TEST: PLAYBACK COMMAND PASSED")
 
         else:
+            stderr = completed.stderr.decode(errors="ignore").strip()
+            stdout = completed.stdout.decode(errors="ignore").strip()
+
             result = {
                 "name": TEST_NAME,
                 "status": "FAIL",
                 "details": stderr or stdout or "Audio playback command failed."
             }
             print("AUDIO TEST: FAIL")
+
+    except subprocess.TimeoutExpired:
+        result = {
+            "name": TEST_NAME,
+            "status": "ERROR",
+            "details": "Audio playback timed out."
+        }
 
     except Exception as e:
         result = {
