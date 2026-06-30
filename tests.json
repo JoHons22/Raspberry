@@ -39,7 +39,7 @@
     {
         "name": "Audio Playback Test",
         "file": "tests/Audio-Test.py",
-        "instructions": "Insure that the speaker is connected to the AUX port and is turned on. This test generates a 5-second tone in software and requires manual listening confirmation.",
+        "instructions": "Connect the speaker to the AUX port and turn its switch to the on position. Insure there is a green light on the speaker before starting test. This test generates a 5-second tone in software and requires manual listening confirmation.",
         "timeout": 15,
         "enabled": true,
         "requires_observation": true,
