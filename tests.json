@@ -39,7 +39,7 @@
     {
         "name": "Audio Playback Test",
         "file": "tests/Audio-Test.py",
-        "instructions": "Connect speakers, headphones, or an HDMI display with audio before running. This test generates a 5-second tone in software and requires manual listening confirmation.",
+        "instructions": "Insure that the speaker is connected to the AUX port and is turned on. This test generates a 5-second tone in software and requires manual listening confirmation.",
         "timeout": 15,
         "enabled": true,
         "requires_observation": true,
