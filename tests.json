@@ -30,15 +30,19 @@
     {
         "name": "GPIO 26-Pin LED Test",
         "file": "tests/GPIO-26-Test.py",
-        "instructions": "Connect three 10-segment LED displays with current-limiting resistors. GPIO 2 through GPIO 11 go to Display 1, GPIO 12 through GPIO 21 go to Display 2, and GPIO 22 through GPIO 27 go to the first 6 segments of Display 3.",
-        "timeout": 25,
-        "enabled": true
+        "instructions": "Connect three 10-segment LED displays with current-limiting resistors. GPIO 2 through GPIO 11 go to Display 1, GPIO 12 through GPIO 21 go to Display 2, and GPIO 22 through GPIO 27 go to the first 6 segments of Display 3. GPIO2 and GPIO3 may stay on when idle because they are I2C pins with pull-ups.",
+        "timeout": 30,
+        "enabled": true,
+        "requires_observation": true,
+        "observation_prompt": "Did each LED segment light correctly, including the final all-LEDs-on check?"
     },
     {
-    "name": "Audio Playback Test",
-    "file": "tests/Audio-Test.py",
-    "instructions": "Connect speakers, headphones, or an HDMI display with audio before running. The test plays a short WAV tone and requires manual listening confirmation.",
-    "timeout": 15,
-    "enabled": true
+        "name": "Audio Playback Test",
+        "file": "tests/Audio-Test.py",
+        "instructions": "Connect speakers, headphones, or an HDMI display with audio before running. This test generates a 5-second tone in software and requires manual listening confirmation.",
+        "timeout": 15,
+        "enabled": true,
+        "requires_observation": true,
+        "observation_prompt": "Did you hear the 5-second audio tone clearly?"
     }
 ]
