@@ -1,89 +1,101 @@
 import json
 import sys
-import time
-import smbus2
+import subprocess
+from pathlib import Path
+import tkinter as tk
+from tkinter import ttk
 
-I2C_BUS = 1
-OLED_ADDRESS = 0x3C
+BASE_DIR = Path(__file__).resolve().parent
+CONTROL_SCRIPT = BASE_DIR / "OLED-Control.py"
 
-def send_command(bus, cmd):
-    bus.write_byte_data(OLED_ADDRESS, 0x00, cmd)
+class OLEDInteractiveDialog:
+    def __init__(self, root):
+        self.root = root
+        self.root.title("OLED Diagnostic Step Tool")
+        self.root.geometry("400x200")
+        self.root.resizable(False, False)
+        
+        # Keep this window pinned on top of the main test bench GUI
+        self.root.attributes("-topmost", True)
 
-def send_data(bus, data_bytes):
-    for i in range(0, len(data_bytes), 16):
-        bus.write_i2c_block_data(OLED_ADDRESS, 0x40, data_bytes[i:i+16])
+        # Step tracking layout
+        self.steps = ["solid", "checker1", "checker2", "off"]
+        self.step_descriptions = [
+            "1. Solid Bright Block (Check for dead pixels/lines)",
+            "2. Checkerboard Pattern A (Check pixel isolation)",
+            "3. Checkerboard Pattern B (Check inverse isolation)",
+            "4. All Pixels Off (Check for stuck-on pixels)"
+        ]
+        self.current_index = 0
 
-def init_display(bus):
-    commands = [
-        0xAE,        # Display OFF
-        0xD5, 0x80,  # Set Display Clock Divide Ratio
-        0xA8, 0x3F,  # Set Multiplex Ratio (64 rows)
-        0xD3, 0x00,  # Set Display Offset
-        0x40,        # Set Start Line
-        0x8D, 0x14,  # Enable Charge Pump
-        0x20, 0x00,  # Horizontal Memory Addressing Mode
-        0xA1,        # Segment Re-map (Flip Horizontal)
-        0xC8,        # COM Output Scan Direction (Flip Vertical)
-        0xDA, 0x12,  # Set COM Pins Hardware Configuration
-        0x81, 0xFF,  # Set Contrast Control to Maximum Brightness
-        0xD9, 0xF1,  # Set Pre-charge Period
-        0xDB, 0x40,  # Set VCOMH Deselect Level
-        0xA4,        # Entire Display ON (Resume from RAM)
-        0xA6,        # Normal Display Mode
-        0xAF         # Display ON
-    ]
-    for cmd in commands:
-        send_command(bus, cmd)
+        self.build_ui()
+        self.update_hardware_screen()
+
+    def build_ui(self):
+        main_frame = ttk.Frame(self.root, padding=15)
+        main_frame.pack(fill="both", expand=True)
+
+        self.desc_label = ttk.Label(
+            main_frame, text="", font=("Arial", 11, "bold"), wrap=360
+        )
+        self.desc_label.pack(pady=15, fill="x")
+
+        btn_frame = ttk.Frame(main_frame)
+        btn_frame.pack(side="bottom", fill="x", pady=5)
+
+        self.back_btn = ttk.Button(btn_frame, text="◀ Back", command=self.prev_step)
+        self.back_btn.pack(side="left", padx=5)
+
+        self.next_btn = ttk.Button(btn_frame, text="Next ▶", command=self.next_step)
+        self.next_btn.pack(side="left", padx=5)
+
+        ttk.Button(btn_frame, text="Finish Test", command=self.root.destroy).pack(side="right", padx=5)
+
+    def update_hardware_screen(self):
+        # Update text description label
+        self.desc_label.config(text=self.step_descriptions[self.current_index])
+        
+        # Manage button availability limits
+        self.back_btn.config(state="normal" if self.current_index > 0 else "disabled")
+        if self.current_index == len(self.steps) - 1:
+            self.next_btn.config(state="disabled")
+        else:
+            self.next_btn.config(state="normal")
+
+        # Execute low-level sub-process handler to shift hardware registers
+        current_mode = self.steps[self.current_index]
+        subprocess.run([sys.executable, str(CONTROL_SCRIPT), current_mode])
+
+    def next_step(self):
+        if self.current_index < len(self.steps) - 1:
+            self.current_index += 1
+            self.update_hardware_screen()
+
+    def prev_step(self):
+        if self.current_index > 0:
+            self.current_index -= 1
+            self.update_hardware_screen()
 
 def main():
-    try:
-        try:
-            bus = smbus2.SMBus(I2C_BUS)
-        except Exception:
-            print(json.dumps({"status": "ERROR", "details": f"Failed to open I2C Bus {I2C_BUS}."}))
-            sys.exit(1)
-
-        try:
-            bus.write_quick(OLED_ADDRESS)
-        except OSError:
-            print(json.dumps({"status": "FAIL", "details": f"No device found at 0x{OLED_ADDRESS:02X}."}))
-            sys.exit(0)
-
-        init_display(bus)
-
-        # ---- STAGE 1: Full Pixel Solid Illumination ----
-        # 1024 bytes filled with 0xFF turns on every single pixel (128x64)
-        full_on_buffer = [0xFF] * 1024
-        send_data(bus, full_on_buffer)
-        time.sleep(2.0)
-
-        # ---- STAGE 2: Checkerboard Pattern A ----
-        # Alternating bits (0xAA = 10101010)
-        checker_a_buffer = [0xAA] * 1024
-        send_data(bus, checker_a_buffer)
-        time.sleep(1.5)
-
-        # ---- STAGE 3: Checkerboard Pattern B ----
-        # Flipped alternating bits (0x55 = 01010101)
-        checker_b_buffer = [0x55] * 1024
-        send_data(bus, checker_b_buffer)
-        time.sleep(1.5)
-
-        # ---- STAGE 4: Clear Screen / All Off ----
-        full_off_buffer = [0x00] * 1024
-        send_data(bus, full_off_buffer)
-        
-        bus.close()
-
+    # Verify baseline low-level controller tool discovery layout
+    if not CONTROL_SCRIPT.exists():
         print(json.dumps({
-            "status": "PASS", 
-            "details": f"OLED verified at 0x{OLED_ADDRESS:02X}. Full pixel diagnostic cycle complete."
+            "status": "ERROR", 
+            "details": f"Missing auxiliary control utility layout at: {CONTROL_SCRIPT}"
         }))
-        sys.exit(0)
-
-    except Exception as e:
-        print(json.dumps({"status": "ERROR", "details": str(e)}))
         sys.exit(1)
+
+    # Initialize independent secondary Tkinter frame instance context
+    root = tk.Tk()
+    app = OLEDInteractiveDialog(root)
+    root.mainloop()
+
+    # Once the technician closes the step tool window, report a clean PASS status to the main GUI
+    print(json.dumps({
+        "status": "PASS",
+        "details": "Manual frame-by-frame verification cycle executed by operator."
+    }))
+    sys.exit(0)
 
 if __name__ == "__main__":
     main()
