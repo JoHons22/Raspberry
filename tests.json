@@ -49,7 +49,7 @@
     "name": "I2C OLED Screen Test",
     "file": "tests/OLED-Display-Test.py",
     "instructions": "Connect OLED VCC to Pi 3.3V (Pin 1), GND to Pi GND (Pin 6), SDA to GPIO2 (Pin 3), and SCL to GPIO3 (Pin 5). Ensure I2C is enabled in raspi-config.",
-    "timeout": 15,
+    "timeout": 60,
     "enabled": true,
     "requires_observation": true,
     "observation_prompt": "Did the screen successfully transition through a solid bright display block, two alternating checkerboard patterns, and then completely turn off without leaving broken pixels or lines?"
