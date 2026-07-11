@@ -52,6 +52,6 @@
     "timeout": 15,
     "enabled": true,
     "requires_observation": true,
-    "observation_prompt": "Did the OLED display show the test pattern (a border box and the text 'TEST PASSED') cleanly without corrupted rows?"
+    "observation_prompt": "Did the screen successfully transition through a solid bright display block, two alternating checkerboard patterns, and then completely turn off without leaving broken pixels or lines?"
 }
 ]
