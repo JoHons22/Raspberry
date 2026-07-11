@@ -44,5 +44,14 @@
         "enabled": true,
         "requires_observation": true,
         "observation_prompt": "Did you hear the 5-second audio tone clearly?"
-    }
+    },
+    {
+    "name": "I2C OLED Screen Test",
+    "file": "tests/OLED-Display-Test.py",
+    "instructions": "Connect OLED VCC to Pi 3.3V (Pin 1), GND to Pi GND (Pin 6), SDA to GPIO2 (Pin 3), and SCL to GPIO3 (Pin 5). Ensure I2C is enabled in raspi-config.",
+    "timeout": 15,
+    "enabled": true,
+    "requires_observation": true,
+    "observation_prompt": "Did the OLED display show the test pattern (a border box and the text 'TEST PASSED') cleanly without corrupted rows?"
+}
 ]
