@@ -20,6 +20,8 @@ def init_display(bus):
     for cmd in commands:
         send_command(bus, cmd)
 
+# Update this section inside tests/OLED-Control.py
+
 def main():
     if len(sys.argv) < 2:
         sys.exit(1)
@@ -27,6 +29,12 @@ def main():
     mode = sys.argv[1].lower()
 
     try:
+        # --- FIX: Force GPIO 2 and 3 back to I2C mode (ALT0) ---
+        # This undoes any digital output overrides from the regular GPIO tests
+        subprocess.run(["raspi-gpio", "set", "2", "a0"], capture_output=True)
+        subprocess.run(["raspi-gpio", "set", "3", "a0"], capture_output=True)
+        # -------------------------------------------------------
+
         bus = smbus2.SMBus(I2C_BUS)
         bus.write_quick(OLED_ADDRESS)
         init_display(bus)
