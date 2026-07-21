@@ -3,6 +3,7 @@ import sys
 import threading
 import subprocess
 from pathlib import Path
+from datetime import datetime
 import tkinter as tk
 from tkinter import ttk, messagebox
 
@@ -11,7 +12,7 @@ class PiTesterGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Raspberry Pi 4B Modular Tester")
-        self.root.geometry("1050x700")
+        self.root.geometry("1100x750")
 
         self.base_dir = Path(__file__).resolve().parent
         self.config_path = self.base_dir / "tests.json"
@@ -19,6 +20,15 @@ class PiTesterGUI:
         self.tests = self.load_tests()
         self.test_vars = {}
         self.results = []
+
+        self.is_running = False
+        self.stop_requested = False
+
+        self.selection_controls = []
+        self.run_controls = []
+
+        self.total_tests_to_run = 0
+        self.completed_tests = 0
 
         self.build_gui()
 
@@ -45,6 +55,28 @@ class PiTesterGUI:
             messagebox.showerror("Config Error", str(e))
             return []
 
+    def infer_category(self, test):
+        """
+        Uses the category from tests.json if available.
+        If no category is provided, it guesses a category from the test name.
+        """
+
+        if "category" in test:
+            return test["category"]
+
+        name = test.get("name", "").lower()
+
+        if "uart" in name or "spi" in name:
+            return "Communication Tests"
+        elif "wi-fi" in name or "wifi" in name or "network" in name:
+            return "Network Tests"
+        elif "audio" in name or "led" in name:
+            return "Audio / Visual Tests"
+        elif "gpio" in name or "servo" in name:
+            return "GPIO Tests"
+        else:
+            return "General Tests"
+
     def build_gui(self):
         title = ttk.Label(
             self.root,
@@ -59,42 +91,58 @@ class PiTesterGUI:
         left_frame = ttk.LabelFrame(main_frame, text="Available Tests")
         left_frame.pack(side="left", fill="y", padx=5, pady=5)
 
-        for test in self.tests:
-            var = tk.BooleanVar(value=False)
+        self.category_notebook = ttk.Notebook(left_frame)
+        self.category_notebook.pack(fill="both", expand=True, padx=5, pady=5)
 
-            checkbox = ttk.Checkbutton(
-                left_frame,
-                text=test["name"],
-                variable=var,
-                command=self.update_instructions
-            )
-            checkbox.pack(anchor="w", padx=8, pady=4)
+        self.build_category_tabs()
 
-            self.test_vars[test["name"]] = var
-
-        ttk.Button(
+        select_all_button = ttk.Button(
             left_frame,
             text="Select All",
             command=self.select_all
-        ).pack(fill="x", padx=8, pady=4)
+        )
+        select_all_button.pack(fill="x", padx=8, pady=4)
+        self.selection_controls.append(select_all_button)
 
-        ttk.Button(
+        clear_selection_button = ttk.Button(
             left_frame,
             text="Clear Selection",
             command=self.clear_selection
-        ).pack(fill="x", padx=8, pady=4)
+        )
+        clear_selection_button.pack(fill="x", padx=8, pady=4)
+        self.selection_controls.append(clear_selection_button)
 
-        ttk.Button(
+        run_selected_button = ttk.Button(
             left_frame,
             text="Run Selected",
             command=self.run_selected_tests
-        ).pack(fill="x", padx=8, pady=12)
+        )
+        run_selected_button.pack(fill="x", padx=8, pady=12)
+        self.run_controls.append(run_selected_button)
 
-        ttk.Button(
+        run_auto_button = ttk.Button(
+            left_frame,
+            text="Run All Automatic Tests",
+            command=self.run_all_automatic_tests
+        )
+        run_auto_button.pack(fill="x", padx=8, pady=4)
+        self.run_controls.append(run_auto_button)
+
+        self.stop_button = ttk.Button(
+            left_frame,
+            text="Stop After Current Test",
+            command=self.request_stop,
+            state="disabled"
+        )
+        self.stop_button.pack(fill="x", padx=8, pady=4)
+
+        save_button = ttk.Button(
             left_frame,
             text="Save Results",
             command=self.save_results
-        ).pack(fill="x", padx=8, pady=4)
+        )
+        save_button.pack(fill="x", padx=8, pady=12)
+        self.run_controls.append(save_button)
 
         right_frame = ttk.Frame(main_frame)
         right_frame.pack(side="right", fill="both", expand=True, padx=5, pady=5)
@@ -110,13 +158,31 @@ class PiTesterGUI:
         self.instructions_box.pack(fill="x", padx=5, pady=5)
         self.instructions_box.insert("end", "Select a test to view setup instructions.")
 
+        progress_frame = ttk.LabelFrame(right_frame, text="Progress")
+        progress_frame.pack(fill="x", padx=5, pady=5)
+
+        self.progress_label = ttk.Label(
+            progress_frame,
+            text="Progress: 0 of 0 tests complete"
+        )
+        self.progress_label.pack(anchor="w", padx=5, pady=3)
+
+        self.progress_bar = ttk.Progressbar(
+            progress_frame,
+            orient="horizontal",
+            mode="determinate",
+            maximum=100,
+            value=0
+        )
+        self.progress_bar.pack(fill="x", padx=5, pady=5)
+
         results_frame = ttk.LabelFrame(right_frame, text="Results")
         results_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
         table_frame = ttk.Frame(results_frame)
         table_frame.pack(fill="both", expand=True, padx=5, pady=5)
 
-        columns = ("Test", "Status", "Details")
+        columns = ("Time", "Test", "Status", "Details")
         self.results_table = ttk.Treeview(
             table_frame,
             columns=columns,
@@ -124,13 +190,15 @@ class PiTesterGUI:
             height=10
         )
 
+        self.results_table.heading("Time", text="Time")
         self.results_table.heading("Test", text="Test")
         self.results_table.heading("Status", text="Status")
         self.results_table.heading("Details", text="Details")
 
-        self.results_table.column("Test", width=230, minwidth=180, stretch=True)
+        self.results_table.column("Time", width=155, minwidth=130, stretch=False)
+        self.results_table.column("Test", width=220, minwidth=180, stretch=True)
         self.results_table.column("Status", width=90, minwidth=80, stretch=False)
-        self.results_table.column("Details", width=650, minwidth=350, stretch=True)
+        self.results_table.column("Details", width=600, minwidth=350, stretch=True)
 
         y_scroll = ttk.Scrollbar(
             table_frame,
@@ -156,7 +224,12 @@ class PiTesterGUI:
         table_frame.rowconfigure(0, weight=1)
         table_frame.columnconfigure(0, weight=1)
 
-        self.results_table.bind("<<TreeviewSelect>>", self.update_full_details_from_selection)
+        self.results_table.bind(
+            "<<TreeviewSelect>>",
+            self.update_full_details_from_selection
+        )
+
+        self.setup_result_tags()
 
         details_frame = ttk.LabelFrame(right_frame, text="Full Details")
         details_frame.pack(fill="both", expand=True, padx=5, pady=5)
@@ -202,6 +275,44 @@ class PiTesterGUI:
         self.status_label = ttk.Label(self.root, text="Ready")
         self.status_label.pack(pady=5)
 
+    def build_category_tabs(self):
+        categories = {}
+
+        for test in self.tests:
+            category = self.infer_category(test)
+
+            if category not in categories:
+                categories[category] = []
+
+            categories[category].append(test)
+
+        for category_name, category_tests in categories.items():
+            tab = ttk.Frame(self.category_notebook)
+            self.category_notebook.add(tab, text=category_name)
+
+            for test in category_tests:
+                var = tk.BooleanVar(value=False)
+
+                checkbox = ttk.Checkbutton(
+                    tab,
+                    text=test["name"],
+                    variable=var,
+                    command=self.update_instructions
+                )
+                checkbox.pack(anchor="w", padx=8, pady=4)
+
+                self.test_vars[test["name"]] = var
+                self.selection_controls.append(checkbox)
+
+    def setup_result_tags(self):
+        self.results_table.tag_configure("PASS", background="#d8f5d0")
+        self.results_table.tag_configure("FAIL", background="#f8d0d0")
+        self.results_table.tag_configure("ERROR", background="#f8d0d0")
+        self.results_table.tag_configure("WARN", background="#fff3bf")
+        self.results_table.tag_configure("SKIP", background="#e0e0e0")
+        self.results_table.tag_configure("RUNNING", background="#d7e9ff")
+        self.results_table.tag_configure("STOPPED", background="#e0e0e0")
+
     def update_instructions(self):
         self.instructions_box.delete("1.0", "end")
 
@@ -220,6 +331,17 @@ class PiTesterGUI:
                 "end",
                 f"{test.get('instructions', 'No instructions provided.')}\n"
             )
+
+            if test.get("skip_gui_setup_prompt", False):
+                self.instructions_box.insert(
+                    "end",
+                    "This test handles its own switch/setup prompts internally.\n"
+                )
+            else:
+                self.instructions_box.insert(
+                    "end",
+                    "Switch/setup checklist will be shown before this test runs.\n"
+                )
 
             if test.get("requires_observation", False):
                 self.instructions_box.insert(
@@ -240,13 +362,35 @@ class PiTesterGUI:
 
         return selected
 
+    def get_automatic_tests(self):
+        """
+        Automatic tests are tests that do not need manual observation
+        and do not handle internal pop-ups.
+        """
+        automatic_tests = []
+
+        for test in self.tests:
+            requires_observation = test.get("requires_observation", False)
+            has_internal_prompts = test.get("skip_gui_setup_prompt", False)
+
+            if not requires_observation and not has_internal_prompts:
+                automatic_tests.append(test)
+
+        return automatic_tests
+
     def select_all(self):
+        if self.is_running:
+            return
+
         for var in self.test_vars.values():
             var.set(True)
 
         self.update_instructions()
 
     def clear_selection(self):
+        if self.is_running:
+            return
+
         for var in self.test_vars.values():
             var.set(False)
 
@@ -262,9 +406,40 @@ class PiTesterGUI:
             )
             return
 
+        self.start_test_run(selected_tests)
+
+    def run_all_automatic_tests(self):
+        automatic_tests = self.get_automatic_tests()
+
+        if not automatic_tests:
+            messagebox.showwarning(
+                "No Automatic Tests",
+                "No automatic tests are available."
+            )
+            return
+
+        self.start_test_run(automatic_tests)
+
+    def start_test_run(self, selected_tests):
+        if self.is_running:
+            messagebox.showwarning(
+                "Testing Already Running",
+                "A test run is already in progress."
+            )
+            return
+
         self.results = []
         self.results_table.delete(*self.results_table.get_children())
         self.set_full_details_text("")
+
+        self.stop_requested = False
+        self.is_running = True
+
+        self.total_tests_to_run = len(selected_tests)
+        self.completed_tests = 0
+        self.update_progress_safe()
+
+        self.set_controls_running_state(True)
 
         test_thread = threading.Thread(
             target=self.run_tests_thread,
@@ -277,9 +452,48 @@ class PiTesterGUI:
         self.set_status("Running selected tests...")
 
         for test in selected_tests:
+            if self.stop_requested:
+                break
+
             test_name = test["name"]
 
             self.add_result_row_safe(
+                test_name,
+                "RUNNING",
+                "Waiting for setup checklist confirmation..."
+            )
+
+            if test.get("skip_gui_setup_prompt", False):
+                setup_confirmed = True
+                self.update_last_temp_row_safe(
+                    test_name,
+                    "RUNNING",
+                    "This test is handling its own switch/setup prompts."
+                )
+            else:
+                self.set_status(f"Waiting for setup confirmation: {test_name}")
+
+                setup_confirmed = self.confirm_setup_checklist(test)
+
+                if not setup_confirmed:
+                    result = {
+                        "name": test_name,
+                        "status": "SKIP",
+                        "details": "Test skipped because the setup/switch checklist was not confirmed."
+                    }
+
+                    result = self.add_timestamp_to_result(result)
+                    self.results.append(result)
+                    self.completed_tests += 1
+                    self.refresh_results_table_safe()
+                    self.update_progress_safe()
+                    continue
+
+            if self.stop_requested:
+                break
+
+            self.set_status(f"Running test: {test_name}")
+            self.update_last_temp_row_safe(
                 test_name,
                 "RUNNING",
                 "Test in progress..."
@@ -291,15 +505,27 @@ class PiTesterGUI:
                 self.set_status(f"Waiting for manual confirmation: {test_name}")
                 result = self.ask_for_manual_confirmation(test, result)
 
+            result = self.add_timestamp_to_result(result)
             self.results.append(result)
-            self.refresh_results_table_safe()
 
-        self.set_status("Testing complete")
+            self.completed_tests += 1
+            self.refresh_results_table_safe()
+            self.update_progress_safe()
+
+        if self.stop_requested:
+            self.set_status("Testing stopped after current test")
+        else:
+            self.set_status("Testing complete")
+
+        self.is_running = False
+        self.set_controls_running_state_safe(False)
 
     def run_test_file(self, test):
         test_name = test["name"]
         test_file = self.base_dir / test["file"]
         timeout = test.get("timeout", 30)
+
+        test_args = test.get("args", [])
 
         if not test_file.exists():
             return {
@@ -309,8 +535,10 @@ class PiTesterGUI:
             }
 
         try:
+            command = [sys.executable, str(test_file)] + test_args
+
             completed = subprocess.run(
-                [sys.executable, str(test_file)],
+                command,
                 text=True,
                 capture_output=True,
                 timeout=timeout
@@ -356,6 +584,63 @@ class PiTesterGUI:
                 "status": "ERROR",
                 "details": str(e)
             }
+
+    def confirm_setup_checklist(self, test):
+        """
+        Shows switch-position confirmation pop-ups before running a test.
+
+        If the test has 'switch_steps' in tests.json, each step gets its own pop-up.
+        If not, it falls back to the older 'switch_checklist' field.
+        """
+
+        test_name = test.get("name", "Unknown Test")
+
+        switch_steps = test.get("switch_steps", [])
+
+        if not switch_steps:
+            old_checklist = test.get("switch_checklist", [])
+
+            if old_checklist:
+                switch_steps = [
+                    "\n".join([f"• {item}" for item in old_checklist])
+                ]
+            else:
+                switch_steps = [
+                    (
+                        "• Placeholder: Set the switch bank for this test.\n"
+                        "• Placeholder: Confirm GPIO ports are routed to the proper test peripheral.\n"
+                        "• Specific switch positions will be added later."
+                    )
+                ]
+
+        for step_number, step_text in enumerate(switch_steps, start=1):
+            response_event = threading.Event()
+            response_holder = {}
+
+            def show_popup():
+                message = (
+                    f"Before running: {test_name}\n\n"
+                    f"Switch Setup Step {step_number} of {len(switch_steps)}:\n\n"
+                    f"{step_text}\n\n"
+                    "All wiring is automatic. Only update the switch positions.\n\n"
+                    "Click Yes after the switches are set correctly.\n"
+                    "Click No to skip this test."
+                )
+
+                response_holder["confirmed"] = messagebox.askyesno(
+                    "Switch Position Confirmation",
+                    message
+                )
+
+                response_event.set()
+
+            self.root.after(0, show_popup)
+            response_event.wait()
+
+            if not response_holder.get("confirmed", False):
+                return False
+
+        return True
 
     def should_ask_for_observation(self, test, result):
         if not test.get("requires_observation", False):
@@ -413,15 +698,40 @@ class PiTesterGUI:
 
         return updated_result
 
+    def add_timestamp_to_result(self, result):
+        updated_result = dict(result)
+        updated_result["timestamp"] = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+        return updated_result
+
     def add_result_row_safe(self, name, status, details):
-        self.root.after(
-            0,
-            lambda: self.results_table.insert(
+        timestamp = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+
+        def add_row():
+            if self.results_table.exists("temp_running"):
+                self.results_table.delete("temp_running")
+
+            self.results_table.insert(
                 "",
                 "end",
-                values=(name, status, details)
+                iid="temp_running",
+                values=(timestamp, name, status, details),
+                tags=(status,)
             )
-        )
+
+        self.root.after(0, add_row)
+
+    def update_last_temp_row_safe(self, name, status, details):
+        timestamp = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
+
+        def update_row():
+            if self.results_table.exists("temp_running"):
+                self.results_table.item(
+                    "temp_running",
+                    values=(timestamp, name, status, details),
+                    tags=(status,)
+                )
+
+        self.root.after(0, update_row)
 
     def refresh_results_table_safe(self):
         self.root.after(0, self.refresh_results_table)
@@ -430,15 +740,19 @@ class PiTesterGUI:
         self.results_table.delete(*self.results_table.get_children())
 
         for index, result in enumerate(self.results):
+            status = result.get("status", "ERROR")
+
             self.results_table.insert(
                 "",
                 "end",
                 iid=str(index),
                 values=(
+                    result.get("timestamp", ""),
                     result.get("name", "Unknown Test"),
-                    result.get("status", "ERROR"),
+                    status,
                     result.get("details", "No details")
-                )
+                ),
+                tags=(status,)
             )
 
         if self.results:
@@ -466,16 +780,18 @@ class PiTesterGUI:
 
         values = self.results_table.item(item_id, "values")
 
-        if len(values) >= 3:
+        if len(values) >= 4:
             text = (
-                f"Test: {values[0]}\n"
-                f"Status: {values[1]}\n\n"
-                f"Details:\n{values[2]}"
+                f"Time: {values[0]}\n"
+                f"Test: {values[1]}\n"
+                f"Status: {values[2]}\n\n"
+                f"Details:\n{values[3]}"
             )
             self.set_full_details_text(text)
 
     def display_result_details(self, result):
         text = (
+            f"Time: {result.get('timestamp', '')}\n"
             f"Test: {result.get('name', 'Unknown Test')}\n"
             f"Status: {result.get('status', 'ERROR')}\n\n"
             f"Details:\n{result.get('details', 'No details')}"
@@ -502,6 +818,7 @@ class PiTesterGUI:
             if 0 <= index < len(self.results):
                 result = self.results[index]
                 return (
+                    f"Time: {result.get('timestamp', '')}\n"
                     f"Test: {result.get('name', 'Unknown Test')}\n"
                     f"Status: {result.get('status', 'ERROR')}\n\n"
                     f"Details:\n{result.get('details', 'No details')}"
@@ -542,6 +859,54 @@ class PiTesterGUI:
             "Selected test details copied to clipboard."
         )
 
+    def update_progress_safe(self):
+        self.root.after(0, self.update_progress)
+
+    def update_progress(self):
+        if self.total_tests_to_run <= 0:
+            percent = 0
+        else:
+            percent = int((self.completed_tests / self.total_tests_to_run) * 100)
+
+        self.progress_bar["value"] = percent
+
+        self.progress_label.config(
+            text=(
+                f"Progress: {self.completed_tests} of "
+                f"{self.total_tests_to_run} tests complete"
+            )
+        )
+
+    def request_stop(self):
+        if self.is_running:
+            self.stop_requested = True
+            self.set_status(
+                "Stop requested. The current test will finish, then testing will stop."
+            )
+
+    def set_controls_running_state(self, running):
+        state = "disabled" if running else "normal"
+
+        for control in self.selection_controls:
+            try:
+                control.config(state=state)
+            except Exception:
+                pass
+
+        for control in self.run_controls:
+            try:
+                control.config(state=state)
+            except Exception:
+                pass
+
+        if running:
+            self.stop_button.config(state="normal")
+        else:
+            self.stop_button.config(state="disabled")
+
+    def set_controls_running_state_safe(self, running):
+        self.root.after(0, lambda: self.set_controls_running_state(running))
+
     def set_status(self, text):
         self.root.after(
             0,
@@ -556,13 +921,17 @@ class PiTesterGUI:
             )
             return
 
-        output_file = self.base_dir / "pi_test_results.txt"
+        timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
+        output_file = self.base_dir / f"pi_test_results_{timestamp}.txt"
 
         with open(output_file, "w") as file:
             file.write("Raspberry Pi 4B Test Results\n")
+            file.write("=" * 40 + "\n")
+            file.write(f"Saved: {datetime.now().strftime('%Y-%m-%d %I:%M:%S %p')}\n")
             file.write("=" * 40 + "\n\n")
 
             for result in self.results:
+                file.write(f"Time: {result.get('timestamp', '')}\n")
                 file.write(f"Test: {result.get('name', 'Unknown')}\n")
                 file.write(f"Status: {result.get('status', 'ERROR')}\n")
                 file.write(f"Details: {result.get('details', '')}\n")
