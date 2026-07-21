@@ -5,6 +5,12 @@
         "instructions": "Connect the servo signal wire to GPIO18, connect servo power, and connect servo ground to Raspberry Pi ground before running.",
         "timeout": 20,
         "enabled": true
+        "switch_checklist": [
+        "Set All Switches to the DOWN position",
+        "Set Switches W0, W1, W2, W3 to the UP position",
+        "Set Switches M1 & M3 to the DOWN position",
+        "OTHER SERVO TESTS WIP"
+        ]
     },
     {
         "name": "UART Loopback Test",
@@ -12,6 +18,10 @@
         "instructions": "Connect GPIO14 TXD, physical pin 8, to GPIO15 RXD, physical pin 10, before running. Make sure UART is enabled and serial console is disabled.",
         "timeout": 10,
         "enabled": true
+        "switch_checklist": [
+        "Set All Switches to the DOWN position",
+        "Then set Switches U0 & U1 to the UP position"
+        ]
     },
     {
         "name": "SPI Test",
@@ -19,6 +29,10 @@
         "instructions": "Enable SPI before running. Wire MOSI GPIO10 pin 19 to MISO GPIO9 pin 21, add a 10k pull-down resistor from MISO GPIO9 pin 21 to GND, wire SCLK GPIO11 pin 23 to GPIO5 pin 29, CE0 GPIO8 pin 24 to GPIO6 pin 31, and CE1 GPIO7 pin 26 to GPIO13 pin 33.",
         "timeout": 25,
         "enabled": true
+        "switch_checklist": [
+        "Set All Switches to the DOWN position",
+        "Set All S[0-7] & P[0-9] Switches to the UP position"
+        ]
     },
     {
         "name": "Wi-Fi Ping Test",
@@ -26,6 +40,9 @@
         "instructions": "Connect the Raspberry Pi to a Wi-Fi network before running. This test checks wlan0, accepts IPv4 or IPv6, and pings google.com through the Wi-Fi interface.",
         "timeout": 35,
         "enabled": true
+        "switch_checklist": [
+        "No Specific Switch positions required"
+        ]
     },
     {
         "name": "GPIO 26-Pin LED Test",
@@ -35,6 +52,9 @@
         "enabled": true,
         "requires_observation": true,
         "observation_prompt": "Did each LED segment light correctly, including the final all-LEDs-on check?"
+        "switch_checklist": [
+        "Set ALL Switches to the DOWN position"
+        ]
     },
     {
         "name": "Audio Playback Test",
@@ -44,14 +64,21 @@
         "enabled": true,
         "requires_observation": true,
         "observation_prompt": "Did you hear the 5-second audio tone clearly?"
+        "switch_checklist": [
+        "No Specific Switch positions required"
+        ]
     },
     {
-    "name": "I2C OLED Screen Test",
-    "file": "tests/OLED-Display-Test.py",
-    "instructions": "Connect OLED VCC to Pi 3.3V (Pin 1), GND to Pi GND (Pin 6), SDA to GPIO2 (Pin 3), and SCL to GPIO3 (Pin 5). Ensure I2C is enabled in raspi-config.",
-    "timeout": 60,
-    "enabled": true,
-    "requires_observation": true,
-    "observation_prompt": "Did the screen successfully transition through a solid bright display block, two alternating checkerboard patterns, and then completely turn off without leaving broken pixels or lines?"
+        "name": "I2C OLED Screen Test",
+        "file": "tests/OLED-Display-Test.py",
+        "instructions": "Connect OLED VCC to Pi 3.3V (Pin 1), GND to Pi GND (Pin 6), SDA to GPIO2 (Pin 3), and SCL to GPIO3 (Pin 5). Ensure I2C is enabled in raspi-config.",
+        "timeout": 60,
+        "enabled": true,
+        "requires_observation": true,
+        "observation_prompt": "Did the screen successfully transition through a solid bright display block, two alternating checkerboard patterns, and then completely turn off without leaving broken pixels or lines?"
+        "switch_checklist": [
+        "Set ALL Switches to the DOWN position",
+        "Set Switches I0 & I1 to the UP position",
+        ]
 }
 ]
