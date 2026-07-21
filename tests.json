@@ -78,7 +78,7 @@
         "observation_prompt": "Did the screen successfully transition through a solid bright display block, two alternating checkerboard patterns, and then completely turn off without leaving broken pixels or lines?"
         "switch_checklist": [
         "Set ALL Switches to the DOWN position",
-        "Set Switches I0 & I1 to the UP position",
+        "Set Switches I0 & I1 to the UP position"
         ]
 }
 ]
