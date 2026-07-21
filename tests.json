@@ -20,7 +20,6 @@
         ]
     },
     {
-    {
         "name": "SPI Test",
         "category": "Communication Tests",
         "file": "tests/SPI-Test.py",
