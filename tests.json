@@ -1,16 +1,12 @@
 [
-    {
-        "name": "Servo Test",
+        {
+        "name": "Servo PWM Test",
+        "category": "GPIO Tests",
         "file": "tests/Servo-Test.py",
-        "instructions": "Connect the servo signal wire to GPIO18, connect servo power, and connect servo ground to Raspberry Pi ground before running.",
-        "timeout": 20,
+        "instructions": "This single test checks four PWM GPIO setups: GPIO12, GPIO18, GPIO13, and GPIO19. All wiring is automatic. The test will prompt for switch position changes before each PWM test and ask for manual observation after each servo movement.",
+        "timeout": 120,
         "enabled": true,
-        "switch_checklist": [
-        "Set All Switches to the DOWN position",
-        "Set Switches W0, W1, W2, W3 to the UP position",
-        "Set Switches M1 & M3 to the DOWN position",
-        "OTHER SERVO TESTS WIP"
-        ]
+        "skip_gui_setup_prompt": true
     },
     {
         "name": "UART Loopback Test",
