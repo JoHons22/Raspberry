@@ -20,10 +20,12 @@
         ]
     },
     {
+    {
         "name": "SPI Test",
+        "category": "Communication Tests",
         "file": "tests/SPI-Test.py",
-        "instructions": "Enable SPI before running. Wire MOSI GPIO10 pin 19 to MISO GPIO9 pin 21, add a 10k pull-down resistor from MISO GPIO9 pin 21 to GND, wire SCLK GPIO11 pin 23 to GPIO5 pin 29, CE0 GPIO8 pin 24 to GPIO6 pin 31, and CE1 GPIO7 pin 26 to GPIO13 pin 33.",
-        "timeout": 25,
+        "instructions": "This test checks both SPI setups. Test 1 uses GPIO7, GPIO8, GPIO9, GPIO10, GPIO11, GPIO5, GPIO6, and GPIO13. Test 2 uses GPIO16, GPIO17, GPIO18, GPIO19, GPIO20, GPIO21, GPIO12, GPIO22, GPIO23, and GPIO24. All wiring is handled by the switch system.",
+        "timeout": 60,
         "enabled": true,
         "switch_checklist": [
         "Set All Switches to the DOWN position",
