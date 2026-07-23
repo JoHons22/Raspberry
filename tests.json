@@ -77,7 +77,7 @@
         "Set ALL Switches to the DOWN position",
         "Set Switches I0 & I1 to the UP position"
         ]
-    }
+    },
     {
         "name": "CSI Camera Port Test",
         "category": "Camera Tests",
