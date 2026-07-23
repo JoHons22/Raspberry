@@ -14,20 +14,21 @@ TEST_NAME = "I2C OLED Test"
 class OLEDInteractiveDialog:
     def __init__(self, root):
         self.root = root
-        self.root.title("OLED Diagnostic Step Tool")
-        self.root.geometry("460x240")
+        self.root.title("I2C OLED Communication Test")
+        self.root.geometry("500x260")
         self.root.resizable(False, False)
 
         # Keep this window pinned on top of the main test bench GUI
         self.root.attributes("-topmost", True)
 
-        self.steps = ["solid", "checker1", "checker2", "off"]
+        # These modes are sent to OLED-Control.py
+        self.steps = ["start", "address", "write", "off"]
 
         self.step_descriptions = [
-            "1. Solid Bright Block\nCheck for dead pixels or missing lines.",
-            "2. Checkerboard Pattern A\nCheck pixel isolation.",
-            "3. Checkerboard Pattern B\nCheck inverse pixel isolation.",
-            "4. All Pixels Off\nCheck for stuck-on pixels."
+            "1. I2C Start Test\nOLED should show: I2C TEST / START / OLED FOUND",
+            "2. I2C Address Test\nOLED should show: I2C ADDRESS / ADDR 3C / DEVICE OK",
+            "3. I2C Data Write Test\nOLED should show: I2C WRITE / DATA SENT / COMM OK",
+            "4. I2C Clear Test\nOLED should show: I2C TEST / CLEAR / DONE"
         ]
 
         self.current_index = 0
@@ -41,25 +42,32 @@ class OLEDInteractiveDialog:
         main_frame = ttk.Frame(self.root, padding=15)
         main_frame.pack(fill="both", expand=True)
 
+        title_label = ttk.Label(
+            main_frame,
+            text="I2C OLED Communication Diagnostic",
+            font=("Arial", 12, "bold")
+        )
+        title_label.pack(pady=5)
+
         self.desc_label = ttk.Label(
             main_frame,
             text="",
-            font=("Arial", 11, "bold"),
-            wraplength=420,
+            font=("Arial", 10),
+            wraplength=450,
             justify="center"
         )
-        self.desc_label.pack(pady=10, fill="x")
+        self.desc_label.pack(pady=12, fill="x")
 
         self.status_label = ttk.Label(
             main_frame,
             text="",
-            wraplength=420,
+            wraplength=450,
             justify="center"
         )
         self.status_label.pack(pady=5, fill="x")
 
         btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(side="bottom", fill="x", pady=8)
+        btn_frame.pack(side="bottom", fill="x", pady=10)
 
         self.back_btn = ttk.Button(
             btn_frame,
@@ -108,8 +116,9 @@ class OLEDInteractiveDialog:
 
         if completed.returncode == 0:
             self.status_label.config(
-                text=f"OLED command sent successfully: {current_mode}"
+                text=f"Command sent successfully: {current_mode}"
             )
+
         else:
             error_text = completed.stderr.strip() or completed.stdout.strip()
             self.error_message = error_text or "OLED control script failed."
@@ -163,7 +172,7 @@ def main():
         print(json.dumps({
             "name": TEST_NAME,
             "status": "ERROR",
-            "details": f"OLED test had a control error: {app.error_message}"
+            "details": f"OLED I2C test had a control error: {app.error_message}"
         }))
         sys.exit(1)
 
@@ -171,7 +180,8 @@ def main():
         "name": TEST_NAME,
         "status": app.user_result,
         "details": (
-            "OLED manual diagnostic cycle completed. "
+            "I2C OLED communication diagnostic completed. "
+            "The test verified OLED address response and data writes through the I2C bus. "
             f"Operator selected {app.user_result}."
         )
     }))
