@@ -12,7 +12,6 @@ ON_STATE = GPIO.HIGH if ACTIVE_HIGH else GPIO.LOW
 OFF_STATE = GPIO.LOW if ACTIVE_HIGH else GPIO.HIGH
 
 SEGMENT_HOLD_TIME = 0.5
-ALL_ON_HOLD_TIME = 3
 
 display_map = {
     "Display 1": {
@@ -65,11 +64,6 @@ def turn_all_off(pins):
         GPIO.output(pin, OFF_STATE)
 
 
-def turn_all_on(pins):
-    for pin in pins:
-        GPIO.output(pin, ON_STATE)
-
-
 def main():
     result = {
         "name": TEST_NAME,
@@ -84,6 +78,7 @@ def main():
         GPIO.setmode(GPIO.BCM)
         GPIO.setwarnings(False)
 
+        # Configure all LED pins as outputs and start with all LEDs off
         for pin in all_pins:
             GPIO.setup(pin, GPIO.OUT)
             GPIO.output(pin, OFF_STATE)
@@ -91,6 +86,8 @@ def main():
         print("GPIO 26-PIN LED TEST")
         print("====================")
         print("This test cycles GPIO 2 through GPIO 27.")
+        print("Only one LED segment is turned on at a time.")
+        print("The final all-LEDs-on check has been removed to reduce current draw.")
         print("Use one current-limiting resistor per LED segment.")
         print("Display 3 only uses 6 of its 10 segments.")
         print()
@@ -103,6 +100,7 @@ def main():
             print(f"--- {display_name} ---")
 
             for segment_name, pin in segments.items():
+                # Make sure only one LED is on at a time
                 turn_all_off(all_pins)
 
                 GPIO.output(pin, ON_STATE)
@@ -112,20 +110,19 @@ def main():
                 time.sleep(SEGMENT_HOLD_TIME)
 
         print()
-        print("===== TURNING ALL LEDS ON =====")
-        turn_all_on(all_pins)
-        time.sleep(ALL_ON_HOLD_TIME)
-
         print("===== END OF GPIO TEST CYCLE =====")
+
+        # Turn everything off at the end
         turn_all_off(all_pins)
 
         result = {
             "name": TEST_NAME,
-            "status": "PASS",
+            "status": "WARN",
             "details": (
                 f"Commanded {len(tested_pins)} GPIO pins from GPIO 2 through GPIO 27. "
-                f"Each LED was tested individually, then all LEDs were turned on together for "
-                f"{ALL_ON_HOLD_TIME} seconds. Visual confirmation is required."
+                "Each LED was tested individually with only one LED on at a time. "
+                "The final all-LEDs-on check was removed to reduce current draw. "
+                "Manual visual confirmation is required."
             )
         }
 
@@ -143,6 +140,7 @@ def main():
         except Exception:
             pass
 
+        # The GUI reads the final printed line as JSON.
         print(json.dumps(result))
 
 
