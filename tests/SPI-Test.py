@@ -1,6 +1,7 @@
 import time
 import json
 import subprocess
+import shutil
 from pathlib import Path
 
 import spidev
@@ -111,11 +112,145 @@ def run_command(command, timeout=5):
         return 1, "", str(e)
 
 
+def run_pin_command(command):
+    """
+    Runs a pin setup command.
+    Errors are not fatal because the SPI device files and transfers are still tested.
+    """
+    try:
+        completed = subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            timeout=3
+        )
+        return completed.returncode == 0, completed.stderr.strip()
+    except Exception as e:
+        return False, str(e)
+
+
+def set_pin_function(pin, function):
+    """
+    Sets a GPIO pin to an alternate function using raspi-gpio.
+
+    SPI0 uses alternate function a0.
+    SPI1 uses alternate function a4.
+    """
+    if not shutil.which("raspi-gpio"):
+        return False, "raspi-gpio not found"
+
+    return run_pin_command(["raspi-gpio", "set", str(pin), function])
+
+
+def set_pin_input_pull_down(pin):
+    """
+    Sets a monitor GPIO pin as an input with pull-down.
+    """
+    if not shutil.which("raspi-gpio"):
+        return False, "raspi-gpio not found"
+
+    return run_pin_command(["raspi-gpio", "set", str(pin), "ip", "pd"])
+
+
+def configure_spi0_pins():
+    """
+    SPI Test 1 / SPI0 setup.
+
+    Hardware SPI0 pins:
+    GPIO7  = CE1
+    GPIO8  = CE0
+    GPIO9  = MISO
+    GPIO10 = MOSI
+    GPIO11 = SCLK
+
+    Monitor pins:
+    GPIO5, GPIO6, GPIO13
+    """
+
+    setup_messages = []
+
+    for pin in [7, 8, 9, 10, 11]:
+        ok, error = set_pin_function(pin, "a0")
+
+        if ok:
+            setup_messages.append(f"GPIO{pin} set to SPI0 alternate function.")
+        else:
+            setup_messages.append(f"GPIO{pin} SPI0 setup warning: {error}")
+
+    for pin in [5, 6, 13]:
+        ok, error = set_pin_input_pull_down(pin)
+
+        if ok:
+            setup_messages.append(f"GPIO{pin} set as input pull-down monitor.")
+        else:
+            setup_messages.append(f"GPIO{pin} monitor setup warning: {error}")
+
+    return " ".join(setup_messages)
+
+
+def configure_spi1_pins():
+    """
+    SPI Test 2 / SPI1 setup.
+
+    Hardware SPI1 pins:
+    GPIO16 = CE2
+    GPIO17 = CE1
+    GPIO18 = CE0
+    GPIO19 = MISO
+    GPIO20 = MOSI
+    GPIO21 = SCLK
+
+    Monitor pins:
+    GPIO12, GPIO22, GPIO23, GPIO24
+    """
+
+    setup_messages = []
+
+    for pin in [16, 17, 18, 19, 20, 21]:
+        ok, error = set_pin_function(pin, "a4")
+
+        if ok:
+            setup_messages.append(f"GPIO{pin} set to SPI1 alternate function.")
+        else:
+            setup_messages.append(f"GPIO{pin} SPI1 setup warning: {error}")
+
+    for pin in [12, 22, 23, 24]:
+        ok, error = set_pin_input_pull_down(pin)
+
+        if ok:
+            setup_messages.append(f"GPIO{pin} set as input pull-down monitor.")
+        else:
+            setup_messages.append(f"GPIO{pin} monitor setup warning: {error}")
+
+    return " ".join(setup_messages)
+
+
+def configure_spi_pins_for_setup(setup):
+    """
+    Chooses the correct SPI pin configuration before each SPI setup runs.
+    """
+
+    if setup["bus"] == 0:
+        return configure_spi0_pins()
+
+    if setup["bus"] == 1:
+        return configure_spi1_pins()
+
+    return "Unknown SPI bus. No pin setup was performed."
+
+
 def check_required_device_files(setup):
     """
     Checks that the Linux SPI device files exist before testing.
-    SPI0 should provide /dev/spidev0.0 and /dev/spidev0.1.
-    SPI1 with 3 chip-selects should provide /dev/spidev1.0, /dev/spidev1.1, and /dev/spidev1.2.
+
+    SPI0 should provide:
+    /dev/spidev0.0
+    /dev/spidev0.1
+
+    SPI1 with 3 chip-selects should provide:
+    /dev/spidev1.0
+    /dev/spidev1.1
+    /dev/spidev1.2
     """
 
     missing = []
@@ -153,6 +288,10 @@ def pass_fail(value):
     return "PASS" if value else "FAIL"
 
 
+def increment_edge(edge_counts, key):
+    edge_counts[key] += 1
+
+
 def setup_edge_monitors(setup, edge_counts):
     """
     Sets monitor GPIO pins as inputs and counts signal edges.
@@ -183,10 +322,6 @@ def setup_edge_monitors(setup, edge_counts):
     return monitors
 
 
-def increment_edge(edge_counts, key):
-    edge_counts[key] += 1
-
-
 def close_monitors(monitors):
     for monitor in monitors:
         try:
@@ -198,9 +333,10 @@ def close_monitors(monitors):
 def run_spi_device_test(setup, device_info, edge_counts):
     """
     Tests one SPI chip-select device.
-    Example:
+
     SPI0 CE0 -> /dev/spidev0.0
     SPI0 CE1 -> /dev/spidev0.1
+
     SPI1 CE0 -> /dev/spidev1.0
     SPI1 CE1 -> /dev/spidev1.1
     SPI1 CE2 -> /dev/spidev1.2
@@ -312,6 +448,7 @@ def run_spi_device_test(setup, device_info, edge_counts):
 def run_spi_setup(setup):
     """
     Runs a full SPI setup.
+
     SPI Test 1 checks SPI0 CE0 and CE1.
     SPI Test 2 checks SPI1 CE0, CE1, and CE2.
     """
@@ -328,6 +465,11 @@ def run_spi_setup(setup):
     print(setup["name"])
     print("=" * 60)
 
+    print("Configuring pins for this SPI setup...")
+    pin_setup_details = configure_spi_pins_for_setup(setup)
+    print(pin_setup_details)
+
+    print()
     print("Expected wiring:")
     for line in setup["wiring"]:
         print(f"  {line}")
@@ -346,11 +488,14 @@ def run_spi_setup(setup):
             details += (
                 "Enable SPI0 using raspi-config: Interface Options -> SPI -> Enable."
             )
+
         elif setup["bus"] == 1:
             details += (
-                "Enable SPI1 with 3 chip-selects in the Raspberry Pi config using "
+                "Enable SPI1 with 3 chip-selects in /boot/config.txt using "
                 "dtoverlay=spi1-3cs, then reboot."
             )
+
+        details += f" Pin setup details: {pin_setup_details}"
 
         setup_result["status"] = "ERROR"
         setup_result["details"] = details
@@ -370,13 +515,16 @@ def run_spi_setup(setup):
 
         if all(result["overall_pass"] for result in setup_result["device_results"]):
             setup_result["status"] = "PASS"
+
         elif any(result["error"] for result in setup_result["device_results"]):
             setup_result["status"] = "ERROR"
+
         else:
             setup_result["status"] = "FAIL"
 
-        setup_result["details"] = "; ".join(
-            result["details"] for result in setup_result["device_results"]
+        setup_result["details"] = (
+            f"Pin setup details: {pin_setup_details} "
+            + "; ".join(result["details"] for result in setup_result["device_results"])
         )
 
         return setup_result
