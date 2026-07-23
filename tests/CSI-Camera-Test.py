@@ -40,73 +40,70 @@ def run_command(command, timeout=COMMAND_TIMEOUT_SECONDS):
         return 1, "", str(e)
 
 
-def find_camera_commands():
+def find_camera_command():
     """
-    Finds the available Raspberry Pi camera command set.
+    Finds the available legacy Raspberry Pi camera command.
 
-    Newer Raspberry Pi OS versions use rpicam-*.
-    Older Raspberry Pi OS versions may use libcamera-*.
+    This version is intended for Raspberry Pi systems using the legacy
+    camera stack, which uses raspistill.
     """
 
-    if shutil.which("rpicam-still"):
-        return {
-            "tool_set": "rpicam",
-            "still": "rpicam-still",
-            "hello": "rpicam-hello" if shutil.which("rpicam-hello") else None
-        }
-
-    if shutil.which("libcamera-still"):
-        return {
-            "tool_set": "libcamera",
-            "still": "libcamera-still",
-            "hello": "libcamera-hello" if shutil.which("libcamera-hello") else None
-        }
+    if shutil.which("raspistill"):
+        return "raspistill"
 
     return None
 
 
-def list_detected_cameras(camera_tools):
+def check_legacy_camera_status():
     """
-    Uses rpicam-hello/libcamera-hello to list detected cameras when available.
+    Checks whether the legacy camera stack reports a supported and detected camera.
+
+    Expected successful output usually looks similar to:
+    supported=1 detected=1
     """
 
-    hello_command = camera_tools.get("hello")
-
-    if hello_command is None:
+    if not shutil.which("vcgencmd"):
         return {
             "status": "WARN",
-            "details": "Camera listing command was not found. Capture test will still run."
+            "details": "vcgencmd was not found. Skipping legacy camera detection check."
         }
 
-    command = [hello_command, "--list-cameras"]
-
-    code, stdout, stderr = run_command(command)
+    code, stdout, stderr = run_command(["vcgencmd", "get_camera"])
 
     combined_output = (stdout + "\n" + stderr).strip()
 
     if code != 0:
         return {
-            "status": "FAIL",
-            "details": f"Camera list command failed. Output: {combined_output}"
+            "status": "WARN",
+            "details": f"vcgencmd get_camera failed. Output: {combined_output}"
         }
 
     lowered_output = combined_output.lower()
 
-    if "no cameras available" in lowered_output or "no cameras found" in lowered_output:
+    if "detected=1" in lowered_output:
+        return {
+            "status": "PASS",
+            "details": combined_output
+        }
+
+    if "detected=0" in lowered_output:
         return {
             "status": "FAIL",
-            "details": f"No CSI camera was detected. Output: {combined_output}"
+            "details": (
+                "Legacy camera stack is available, but no camera was detected. "
+                f"Output: {combined_output}"
+            )
         }
 
     return {
-        "status": "PASS",
-        "details": combined_output if combined_output else "Camera list command completed successfully."
+        "status": "WARN",
+        "details": f"Camera status check returned unexpected output: {combined_output}"
     }
 
 
-def capture_test_image(camera_tools):
+def capture_test_image_legacy(camera_command):
     """
-    Captures a still PNG image from the CSI camera.
+    Captures a still PNG image using the legacy raspistill command.
     """
 
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
@@ -117,15 +114,13 @@ def capture_test_image(camera_tools):
         except Exception:
             pass
 
-    still_command = camera_tools["still"]
-
     command = [
-        still_command,
-        "--nopreview",
+        camera_command,
+        "-n",                         # No preview window
         "-t", str(CAPTURE_TIMEOUT_MS),
-        "--width", str(CAPTURE_WIDTH),
-        "--height", str(CAPTURE_HEIGHT),
-        "--encoding", "png",
+        "-w", str(CAPTURE_WIDTH),
+        "-h", str(CAPTURE_HEIGHT),
+        "-e", "png",                  # Save as PNG so Tkinter can display it
         "-o", str(OUTPUT_FILE)
     ]
 
@@ -136,7 +131,7 @@ def capture_test_image(camera_tools):
     if code != 0:
         return {
             "status": "FAIL",
-            "details": f"Camera capture command failed. Output: {combined_output}"
+            "details": f"Legacy camera capture command failed. Output: {combined_output}"
         }
 
     if not OUTPUT_FILE.exists():
@@ -156,7 +151,7 @@ def capture_test_image(camera_tools):
     return {
         "status": "PASS",
         "details": (
-            f"Image captured successfully. "
+            f"Image captured successfully using legacy raspistill. "
             f"File: {OUTPUT_FILE} "
             f"Size: {file_size} bytes."
         )
@@ -193,7 +188,7 @@ class CameraConfirmationDialog:
         instruction_label = ttk.Label(
             main_frame,
             text=(
-                "A test image was captured from the CSI camera port.\n"
+                "A test image was captured from the CSI camera port using the legacy camera stack.\n"
                 "Confirm whether the image below looks like a valid camera image."
             ),
             justify="center"
@@ -204,11 +199,7 @@ class CameraConfirmationDialog:
         image_frame.pack(pady=10)
 
         try:
-            original_photo = tk.PhotoImage(file=str(self.image_path))
-
-            # Keep image visible by saving it as an instance variable.
-            # The capture size is already 640x480, so it should fit in the window.
-            self.photo = original_photo
+            self.photo = tk.PhotoImage(file=str(self.image_path))
 
             image_label = ttk.Label(image_frame, image=self.photo)
             image_label.pack()
@@ -269,10 +260,13 @@ def ask_user_to_confirm_image(image_path):
         return dialog.user_result
 
     except Exception as e:
-        messagebox.showerror(
-            "Camera Confirmation Error",
-            f"Could not open camera confirmation window.\n\nError: {e}"
-        )
+        try:
+            messagebox.showerror(
+                "Camera Confirmation Error",
+                f"Could not open camera confirmation window.\n\nError: {e}"
+            )
+        except Exception:
+            pass
 
         return "ERROR"
 
@@ -287,46 +281,46 @@ def main():
     try:
         print("CSI CAMERA PORT TEST")
         print("====================")
-        print("This test checks whether the Raspberry Pi can detect and capture from the CSI camera.")
+        print("This test checks the CSI camera port using the legacy Raspberry Pi camera stack.")
         print("The captured image will be shown for manual confirmation.")
         print()
 
-        camera_tools = find_camera_commands()
+        camera_command = find_camera_command()
 
-        if camera_tools is None:
+        if camera_command is None:
             result = {
                 "name": TEST_NAME,
                 "status": "ERROR",
                 "details": (
-                    "No Raspberry Pi camera command was found. "
-                    "Install the camera tools first. Try: sudo apt install rpicam-apps"
+                    "No legacy Raspberry Pi camera command was found. "
+                    "The test expected the raspistill command because this Pi appears to be using the legacy camera stack. "
+                    "Try running: which raspistill"
                 )
             }
 
             print(json.dumps(result))
             sys.exit(1)
 
-        print(f"Using camera tool set: {camera_tools['tool_set']}")
-        print(f"Still capture command: {camera_tools['still']}")
+        print(f"Using legacy camera command: {camera_command}")
         print()
 
-        list_result = list_detected_cameras(camera_tools)
+        detection_result = check_legacy_camera_status()
 
-        print("Camera detection result:")
-        print(list_result["details"])
+        print("Legacy camera detection result:")
+        print(detection_result["details"])
         print()
 
-        if list_result["status"] == "FAIL":
+        if detection_result["status"] == "FAIL":
             result = {
                 "name": TEST_NAME,
                 "status": "FAIL",
-                "details": list_result["details"]
+                "details": detection_result["details"]
             }
 
             print(json.dumps(result))
             sys.exit(1)
 
-        capture_result = capture_test_image(camera_tools)
+        capture_result = capture_test_image_legacy(camera_command)
 
         print("Camera capture result:")
         print(capture_result["details"])
@@ -350,7 +344,8 @@ def main():
                 "status": "PASS",
                 "details": (
                     "CSI camera port test passed. "
-                    "The camera was detected, an image was captured, and the user confirmed the image looked correct. "
+                    "The legacy camera stack detected the camera, captured an image, "
+                    "and the user confirmed the image looked correct. "
                     f"{capture_result['details']}"
                 )
             }
