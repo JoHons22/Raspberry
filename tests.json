@@ -77,5 +77,14 @@
         "Set ALL Switches to the DOWN position",
         "Set Switches I0 & I1 to the UP position"
         ]
-}
+    }
+    {
+        "name": "CSI Camera Port Test",
+        "category": "Camera Tests",
+        "file": "tests/CSI-Camera-Test.py",
+        "instructions": "Connect the CSI camera ribbon cable to the Raspberry Pi camera port before running this test. This test checks that the Pi can detect the CSI camera, capture a still image, and show it to the user for confirmation.",
+        "timeout": 60,
+        "enabled": true,
+        "skip_gui_setup_prompt": true
+    }
 ]
