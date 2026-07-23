@@ -1,6 +1,8 @@
 import RPi.GPIO as GPIO
 import time
 import json
+import subprocess
+import shutil
 
 TEST_NAME = "GPIO 26-Pin LED Test"
 
@@ -13,6 +15,11 @@ OFF_STATE = GPIO.LOW if ACTIVE_HIGH else GPIO.HIGH
 
 SEGMENT_HOLD_TIME = 0.5
 CLEANUP_DELAY = 0.5
+
+# UART restore setting:
+# Use "a0" if raspi-gpio showed GPIO14/GPIO15 as TXD0/RXD0 before the LED test.
+# Use "a5" if raspi-gpio showed GPIO14/GPIO15 as TXD1/RXD1 before the LED test.
+UART_ALT_FUNCTION = "a0"
 
 display_map = {
     "Display 1": {
@@ -81,6 +88,67 @@ def setup_led_pins(pins):
         GPIO.output(pin, OFF_STATE)
 
 
+def run_restore_command(command):
+    """
+    Runs a raspi-gpio restore command.
+    Errors are ignored so the LED test can still finish normally.
+    """
+    try:
+        subprocess.run(
+            command,
+            text=True,
+            capture_output=True,
+            timeout=3
+        )
+    except Exception:
+        pass
+
+
+def restore_uart_spi_pin_modes():
+    """
+    Restores UART and SPI pins after the LED test uses them as normal GPIO outputs.
+
+    UART:
+    GPIO14 = TXD
+    GPIO15 = RXD
+
+    SPI0:
+    GPIO7  = CE1
+    GPIO8  = CE0
+    GPIO9  = MISO
+    GPIO10 = MOSI
+    GPIO11 = SCLK
+
+    SPI1:
+    GPIO16 = CE2
+    GPIO17 = CE1
+    GPIO18 = CE0
+    GPIO19 = MISO
+    GPIO20 = MOSI
+    GPIO21 = SCLK
+    """
+
+    if not shutil.which("raspi-gpio"):
+        return "raspi-gpio not found; UART/SPI pin modes were not restored."
+
+    # Restore UART pins.
+    # Change UART_ALT_FUNCTION to "a5" if your working pin check showed TXD1/RXD1.
+    run_restore_command(["raspi-gpio", "set", "14", UART_ALT_FUNCTION])
+    run_restore_command(["raspi-gpio", "set", "15", UART_ALT_FUNCTION])
+
+    # Restore SPI0 pins.
+    # SPI0 uses ALT0.
+    for pin in [7, 8, 9, 10, 11]:
+        run_restore_command(["raspi-gpio", "set", str(pin), "a0"])
+
+    # Restore SPI1 pins.
+    # SPI1 uses ALT4.
+    for pin in [16, 17, 18, 19, 20, 21]:
+        run_restore_command(["raspi-gpio", "set", str(pin), "a4"])
+
+    return "UART/SPI pin modes were restored after the LED test."
+
+
 def main():
     result = {
         "name": TEST_NAME,
@@ -90,6 +158,7 @@ def main():
 
     all_pins = get_all_pins()
     tested_pins = []
+    restore_details = "UART/SPI pin restoration did not run."
 
     try:
         setup_led_pins(all_pins)
@@ -134,9 +203,7 @@ def main():
                 f"Commanded {len(tested_pins)} GPIO pins from GPIO 2 through GPIO 27. "
                 "Each LED was tested individually with only one LED on at a time. "
                 "The final all-LEDs-on check was removed to reduce current draw. "
-                "Manual visual confirmation is required. "
-                "This test uses UART and SPI pins as normal GPIO outputs, so UART/SPI "
-                "tests may need to reinitialize their interfaces afterward."
+                "Manual visual confirmation is required."
             )
         }
 
@@ -152,11 +219,18 @@ def main():
             turn_all_off(all_pins)
             GPIO.cleanup()
 
-            # Short delay to let GPIO cleanup settle before another test starts
+            # Short delay to let GPIO cleanup settle
             time.sleep(CLEANUP_DELAY)
 
-        except Exception:
-            pass
+            # Restore UART/SPI alternate functions so those tests can work again
+            restore_details = restore_uart_spi_pin_modes()
+            print(restore_details)
+
+        except Exception as e:
+            restore_details = f"GPIO cleanup or pin restore error: {e}"
+            print(restore_details)
+
+        result["details"] = result["details"] + f" {restore_details}"
 
         # The GUI reads the final printed line as JSON.
         print(json.dumps(result))
