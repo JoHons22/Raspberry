@@ -12,6 +12,7 @@ ON_STATE = GPIO.HIGH if ACTIVE_HIGH else GPIO.LOW
 OFF_STATE = GPIO.LOW if ACTIVE_HIGH else GPIO.HIGH
 
 SEGMENT_HOLD_TIME = 0.5
+CLEANUP_DELAY = 0.5
 
 display_map = {
     "Display 1": {
@@ -60,7 +61,23 @@ def get_all_pins():
 
 
 def turn_all_off(pins):
+    """
+    Turns every LED output off.
+    This is called before each individual LED turns on so only one LED is active.
+    """
     for pin in pins:
+        GPIO.output(pin, OFF_STATE)
+
+
+def setup_led_pins(pins):
+    """
+    Configures all LED pins as normal GPIO outputs.
+    """
+    GPIO.setmode(GPIO.BCM)
+    GPIO.setwarnings(False)
+
+    for pin in pins:
+        GPIO.setup(pin, GPIO.OUT)
         GPIO.output(pin, OFF_STATE)
 
 
@@ -75,13 +92,7 @@ def main():
     tested_pins = []
 
     try:
-        GPIO.setmode(GPIO.BCM)
-        GPIO.setwarnings(False)
-
-        # Configure all LED pins as outputs and start with all LEDs off
-        for pin in all_pins:
-            GPIO.setup(pin, GPIO.OUT)
-            GPIO.output(pin, OFF_STATE)
+        setup_led_pins(all_pins)
 
         print("GPIO 26-PIN LED TEST")
         print("====================")
@@ -100,8 +111,9 @@ def main():
             print(f"--- {display_name} ---")
 
             for segment_name, pin in segments.items():
-                # Make sure only one LED is on at a time
+                # Make sure every LED is off before turning on the next one
                 turn_all_off(all_pins)
+                time.sleep(0.05)
 
                 GPIO.output(pin, ON_STATE)
                 tested_pins.append(pin)
@@ -122,7 +134,9 @@ def main():
                 f"Commanded {len(tested_pins)} GPIO pins from GPIO 2 through GPIO 27. "
                 "Each LED was tested individually with only one LED on at a time. "
                 "The final all-LEDs-on check was removed to reduce current draw. "
-                "Manual visual confirmation is required."
+                "Manual visual confirmation is required. "
+                "This test uses UART and SPI pins as normal GPIO outputs, so UART/SPI "
+                "tests may need to reinitialize their interfaces afterward."
             )
         }
 
@@ -137,6 +151,10 @@ def main():
         try:
             turn_all_off(all_pins)
             GPIO.cleanup()
+
+            # Short delay to let GPIO cleanup settle before another test starts
+            time.sleep(CLEANUP_DELAY)
+
         except Exception:
             pass
 
