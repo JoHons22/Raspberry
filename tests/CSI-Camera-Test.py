@@ -12,8 +12,10 @@ BASE_DIR = Path(__file__).resolve().parent
 OUTPUT_DIR = BASE_DIR / "camera_test_output"
 OUTPUT_FILE = OUTPUT_DIR / "csi_camera_test.png"
 
-CAPTURE_WIDTH = 640
-CAPTURE_HEIGHT = 480
+# Smaller image keeps the confirmation window usable on the Pi display.
+CAPTURE_WIDTH = 320
+CAPTURE_HEIGHT = 240
+
 CAPTURE_TIMEOUT_MS = 2000
 COMMAND_TIMEOUT_SECONDS = 20
 
@@ -43,11 +45,8 @@ def run_command(command, timeout=COMMAND_TIMEOUT_SECONDS):
 def find_camera_command():
     """
     Finds the available legacy Raspberry Pi camera command.
-
-    This version is intended for Raspberry Pi systems using the legacy
-    camera stack, which uses raspistill.
+    This version uses the legacy camera stack with raspistill.
     """
-
     if shutil.which("raspistill"):
         return "raspistill"
 
@@ -57,11 +56,9 @@ def find_camera_command():
 def check_legacy_camera_status():
     """
     Checks whether the legacy camera stack reports a supported and detected camera.
-
     Expected successful output usually looks similar to:
     supported=1 detected=1
     """
-
     if not shutil.which("vcgencmd"):
         return {
             "status": "WARN",
@@ -105,7 +102,6 @@ def capture_test_image_legacy(camera_command):
     """
     Captures a still PNG image using the legacy raspistill command.
     """
-
     OUTPUT_DIR.mkdir(parents=True, exist_ok=True)
 
     if OUTPUT_FILE.exists():
@@ -163,19 +159,23 @@ class CameraConfirmationDialog:
         self.root = root
         self.image_path = image_path
         self.user_result = "WARN"
+        self.photo = None
 
-        self.root.title("CSI Camera Image Confirmation")
-        self.root.geometry("760x650")
-        self.root.resizable(False, False)
+        self.root.title("CSI Camera Confirmation")
+        self.root.geometry("520x460")
+        self.root.minsize(480, 420)
+        self.root.resizable(True, True)
 
         # Keep this window above the main GUI
         self.root.attributes("-topmost", True)
 
-        self.photo = None
+        # If user closes the window without choosing, return WARN
+        self.root.protocol("WM_DELETE_WINDOW", self.close_without_choice)
+
         self.build_ui()
 
     def build_ui(self):
-        main_frame = ttk.Frame(self.root, padding=12)
+        main_frame = ttk.Frame(self.root, padding=10)
         main_frame.pack(fill="both", expand=True)
 
         title_label = ttk.Label(
@@ -183,20 +183,37 @@ class CameraConfirmationDialog:
             text="CSI Camera Port Test",
             font=("Arial", 14, "bold")
         )
-        title_label.pack(pady=5)
+        title_label.pack(pady=4)
 
         instruction_label = ttk.Label(
             main_frame,
             text=(
-                "A test image was captured from the CSI camera port using the legacy camera stack.\n"
-                "Confirm whether the image below looks like a valid camera image."
+                "The image below was captured from the CSI camera port.\n"
+                "Select Pass if the image is visible and looks correct."
             ),
-            justify="center"
+            justify="center",
+            wraplength=460
         )
-        instruction_label.pack(pady=5)
+        instruction_label.pack(pady=4)
 
-        image_frame = ttk.Frame(main_frame)
-        image_frame.pack(pady=10)
+        # Put buttons near the top so they are always easy to find.
+        top_button_frame = ttk.Frame(main_frame)
+        top_button_frame.pack(pady=6)
+
+        ttk.Button(
+            top_button_frame,
+            text="PASS - Image Looks Correct",
+            command=self.pass_test
+        ).pack(side="left", padx=8)
+
+        ttk.Button(
+            top_button_frame,
+            text="FAIL - Image Is Bad",
+            command=self.fail_test
+        ).pack(side="left", padx=8)
+
+        image_frame = ttk.LabelFrame(main_frame, text="Captured Image", padding=8)
+        image_frame.pack(pady=8)
 
         try:
             self.photo = tk.PhotoImage(file=str(self.image_path))
@@ -215,27 +232,26 @@ class CameraConfirmationDialog:
         file_label = ttk.Label(
             main_frame,
             text=f"Saved image: {self.image_path}",
-            wraplength=700,
+            wraplength=460,
             justify="center"
         )
-        file_label.pack(pady=5)
+        file_label.pack(pady=4)
 
-        btn_frame = ttk.Frame(main_frame)
-        btn_frame.pack(side="bottom", pady=10)
+        # Duplicate buttons at the bottom too.
+        bottom_button_frame = ttk.Frame(main_frame)
+        bottom_button_frame.pack(side="bottom", pady=8)
 
-        pass_btn = ttk.Button(
-            btn_frame,
-            text="Pass - Image Looks Correct",
+        ttk.Button(
+            bottom_button_frame,
+            text="PASS",
             command=self.pass_test
-        )
-        pass_btn.pack(side="left", padx=10)
+        ).pack(side="left", padx=10)
 
-        fail_btn = ttk.Button(
-            btn_frame,
-            text="Fail - Image Is Bad",
+        ttk.Button(
+            bottom_button_frame,
+            text="FAIL",
             command=self.fail_test
-        )
-        fail_btn.pack(side="left", padx=10)
+        ).pack(side="left", padx=10)
 
     def pass_test(self):
         self.user_result = "PASS"
@@ -245,16 +261,24 @@ class CameraConfirmationDialog:
         self.user_result = "FAIL"
         self.root.destroy()
 
+    def close_without_choice(self):
+        self.user_result = "WARN"
+        self.root.destroy()
+
 
 def ask_user_to_confirm_image(image_path):
     """
     Opens a Tkinter window showing the captured camera image.
     The user chooses PASS or FAIL.
     """
-
     try:
         root = tk.Tk()
         dialog = CameraConfirmationDialog(root, image_path)
+
+        # Make sure the window comes forward
+        root.lift()
+        root.focus_force()
+
         root.mainloop()
 
         return dialog.user_result
@@ -293,7 +317,7 @@ def main():
                 "status": "ERROR",
                 "details": (
                     "No legacy Raspberry Pi camera command was found. "
-                    "The test expected the raspistill command because this Pi appears to be using the legacy camera stack. "
+                    "The test expected raspistill because this Pi is using the legacy camera stack. "
                     "Try running: which raspistill"
                 )
             }
