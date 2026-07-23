@@ -16,11 +16,6 @@ OFF_STATE = GPIO.LOW if ACTIVE_HIGH else GPIO.HIGH
 SEGMENT_HOLD_TIME = 0.5
 CLEANUP_DELAY = 0.5
 
-# UART restore setting:
-# Use "a0" if raspi-gpio showed GPIO14/GPIO15 as TXD0/RXD0 before the LED test.
-# Use "a5" if raspi-gpio showed GPIO14/GPIO15 as TXD1/RXD1 before the LED test.
-UART_ALT_FUNCTION = "a0"
-
 display_map = {
     "Display 1": {
         "segment_1": 2,
@@ -70,7 +65,7 @@ def get_all_pins():
 def turn_all_off(pins):
     """
     Turns every LED output off.
-    This is called before each individual LED turns on so only one LED is active.
+    This keeps only one LED active at a time.
     """
     for pin in pins:
         GPIO.output(pin, OFF_STATE)
@@ -108,45 +103,63 @@ def restore_uart_spi_pin_modes():
     """
     Restores UART and SPI pins after the LED test uses them as normal GPIO outputs.
 
+    This restore setup matches the working configuration shown before the LED test.
+
     UART:
-    GPIO14 = TXD
-    GPIO15 = RXD
+    GPIO14 = TXD1
+    GPIO15 = RXD1
 
     SPI0:
-    GPIO7  = CE1
-    GPIO8  = CE0
-    GPIO9  = MISO
-    GPIO10 = MOSI
-    GPIO11 = SCLK
+    GPIO7  = CE1 as output high
+    GPIO8  = CE0 as output high
+    GPIO9  = SPI0 MISO
+    GPIO10 = SPI0 MOSI
+    GPIO11 = SPI0 SCLK
 
     SPI1:
-    GPIO16 = CE2
-    GPIO17 = CE1
-    GPIO18 = CE0
-    GPIO19 = MISO
-    GPIO20 = MOSI
-    GPIO21 = SCLK
+    GPIO16 = CE2 as output high
+    GPIO17 = CE1 as output high
+    GPIO18 = CE0 as output high
+    GPIO19 = SPI1 MISO
+    GPIO20 = SPI1 MOSI
+    GPIO21 = SPI1 SCLK
     """
 
     if not shutil.which("raspi-gpio"):
         return "raspi-gpio not found; UART/SPI pin modes were not restored."
 
-    # Restore UART pins.
-    # Change UART_ALT_FUNCTION to "a5" if your working pin check showed TXD1/RXD1.
-    run_restore_command(["raspi-gpio", "set", "14", UART_ALT_FUNCTION])
-    run_restore_command(["raspi-gpio", "set", "15", UART_ALT_FUNCTION])
+    # Restore UART pins to TXD1/RXD1.
+    # Your working screenshot showed GPIO14/GPIO15 using ALT5.
+    run_restore_command(["raspi-gpio", "set", "14", "a5", "pn"])
+    run_restore_command(["raspi-gpio", "set", "15", "a5", "pu"])
 
-    # Restore SPI0 pins.
-    # SPI0 uses ALT0.
-    for pin in [7, 8, 9, 10, 11]:
-        run_restore_command(["raspi-gpio", "set", str(pin), "a0"])
+    # Restore SPI0 chip-select pins as normal outputs, idle high.
+    # Your working screenshot showed GPIO7/GPIO8 as OUTPUT, not SPI alternate function.
+    run_restore_command(["raspi-gpio", "set", "7", "op", "dh", "pu"])
+    run_restore_command(["raspi-gpio", "set", "8", "op", "dh", "pu"])
 
-    # Restore SPI1 pins.
-    # SPI1 uses ALT4.
-    for pin in [16, 17, 18, 19, 20, 21]:
-        run_restore_command(["raspi-gpio", "set", str(pin), "a4"])
+    # Restore SPI0 data and clock pins to ALT0 with pull-down.
+    run_restore_command(["raspi-gpio", "set", "9", "a0", "pd"])
+    run_restore_command(["raspi-gpio", "set", "10", "a0", "pd"])
+    run_restore_command(["raspi-gpio", "set", "11", "a0", "pd"])
 
-    return "UART/SPI pin modes were restored after the LED test."
+    # Restore SPI1 chip-select pins as normal outputs, idle high.
+    # Your working screenshot showed GPIO16/GPIO17/GPIO18 as OUTPUT.
+    run_restore_command(["raspi-gpio", "set", "16", "op", "dh", "pd"])
+    run_restore_command(["raspi-gpio", "set", "17", "op", "dh", "pd"])
+    run_restore_command(["raspi-gpio", "set", "18", "op", "dh", "pd"])
+
+    # Restore SPI1 data and clock pins to ALT4 with pull-down.
+    run_restore_command(["raspi-gpio", "set", "19", "a4", "pd"])
+    run_restore_command(["raspi-gpio", "set", "20", "a4", "pd"])
+    run_restore_command(["raspi-gpio", "set", "21", "a4", "pd"])
+
+    # Restore SPI monitor pins as inputs with pull-downs.
+    # These are used by the SPI test to detect SCLK and CE activity.
+    for pin in [5, 6, 12, 13, 22, 23, 24]:
+        run_restore_command(["raspi-gpio", "set", str(pin), "ip", "pd"])
+
+    return "UART/SPI pin modes were restored after the LED test using the working pre-LED configuration."
 
 
 def main():
@@ -222,7 +235,7 @@ def main():
             # Short delay to let GPIO cleanup settle
             time.sleep(CLEANUP_DELAY)
 
-            # Restore UART/SPI alternate functions so those tests can work again
+            # Restore UART/SPI pin modes after the LED test
             restore_details = restore_uart_spi_pin_modes()
             print(restore_details)
 
