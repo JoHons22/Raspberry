@@ -1,375 +1,335 @@
 import json
+import subprocess
 import sys
 import threading
-import subprocess
-from pathlib import Path
 from datetime import datetime
+from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk, messagebox, filedialog
 
 
-class PiTesterGUI:
+BASE_DIR = Path(__file__).resolve().parent
+TESTS_JSON = BASE_DIR / "tests.json"
+
+
+class PiTestBenchGUI:
     def __init__(self, root):
         self.root = root
-        self.root.title("Raspberry Pi 4B Modular Tester")
-        self.root.geometry("1100x750")
+        self.root.title("Raspberry Pi Test Bench")
+        self.root.geometry("1000x720")
+        self.root.minsize(900, 620)
 
-        self.base_dir = Path(__file__).resolve().parent
-        self.config_path = self.base_dir / "tests.json"
-
-        self.tests = self.load_tests()
-        self.test_vars = {}
-        self.results = []
-
-        self.is_running = False
+        self.tests = []
+        self.selected_vars = {}
+        self.result_details = {}
         self.stop_requested = False
+        self.running = False
 
-        self.selection_controls = []
-        self.run_controls = []
-
-        self.total_tests_to_run = 0
-        self.completed_tests = 0
-
-        self.build_gui()
+        self.load_tests()
+        self.build_ui()
 
     def load_tests(self):
-        if not self.config_path.exists():
+        if not TESTS_JSON.exists():
             messagebox.showerror(
-                "Missing Config",
-                f"Could not find tests.json at:\n{self.config_path}"
+                "Missing tests.json",
+                f"Could not find tests.json at:\n{TESTS_JSON}"
             )
-            return []
+            self.tests = []
+            return
 
         try:
-            with open(self.config_path, "r") as file:
-                all_tests = json.load(file)
+            with open(TESTS_JSON, "r", encoding="utf-8") as file:
+                self.tests = json.load(file)
 
-            enabled_tests = [
-                test for test in all_tests
-                if test.get("enabled", True)
-            ]
-
-            return enabled_tests
+            for test in self.tests:
+                if "category" not in test:
+                    test["category"] = self.infer_category(test)
 
         except Exception as e:
-            messagebox.showerror("Config Error", str(e))
-            return []
+            messagebox.showerror(
+                "tests.json Error",
+                f"Could not load tests.json:\n{e}"
+            )
+            self.tests = []
 
     def infer_category(self, test):
-        """
-        Uses the category from tests.json if available.
-        If no category is provided, it guesses a category from the test name.
-        """
-
-        if "category" in test:
-            return test["category"]
-
         name = test.get("name", "").lower()
 
-        if "uart" in name or "spi" in name:
-            return "Communication Tests"
-        elif "wi-fi" in name or "wifi" in name or "network" in name:
-            return "Network Tests"
-        elif "audio" in name or "led" in name:
+        if "audio" in name or "camera" in name or "csi" in name:
             return "Audio / Visual Tests"
-        elif "gpio" in name or "servo" in name:
-            return "GPIO Tests"
-        else:
-            return "General Tests"
 
-    def build_gui(self):
-        title = ttk.Label(
-            self.root,
-            text="Raspberry Pi 4B All-In-One Tester",
+        return "GPIO / Communication Tests"
+
+    def build_ui(self):
+        self.create_styles()
+
+        main_frame = ttk.Frame(self.root, padding=10)
+        main_frame.pack(fill="both", expand=True)
+
+        title_label = ttk.Label(
+            main_frame,
+            text="Raspberry Pi Test Bench",
             font=("Arial", 18, "bold")
         )
-        title.pack(pady=10)
+        title_label.pack(pady=(0, 8))
 
-        main_frame = ttk.Frame(self.root)
-        main_frame.pack(fill="both", expand=True, padx=10, pady=10)
+        top_frame = ttk.Frame(main_frame)
+        top_frame.pack(fill="both", expand=True)
 
-        left_frame = ttk.LabelFrame(main_frame, text="Available Tests")
-        left_frame.pack(side="left", fill="y", padx=5, pady=5)
+        self.create_test_selection_panel(top_frame)
+        self.create_results_panel(top_frame)
 
-        self.category_notebook = ttk.Notebook(left_frame)
-        self.category_notebook.pack(fill="both", expand=True, padx=5, pady=5)
+        self.create_control_panel(main_frame)
+        self.create_progress_panel(main_frame)
+        self.create_details_panel(main_frame)
 
-        self.build_category_tabs()
+    def create_styles(self):
+        style = ttk.Style()
 
-        select_all_button = ttk.Button(
-            left_frame,
-            text="Select All",
-            command=self.select_all
+        try:
+            style.theme_use("clam")
+        except Exception:
+            pass
+
+        style.configure("Treeview", rowheight=24)
+        style.configure("Treeview.Heading", font=("Arial", 10, "bold"))
+
+    def create_test_selection_panel(self, parent):
+        selection_frame = ttk.LabelFrame(parent, text="Available Tests", padding=10)
+        selection_frame.pack(side="left", fill="both", expand=False, padx=(0, 8))
+
+        canvas = tk.Canvas(selection_frame, width=300, highlightthickness=0)
+        scrollbar = ttk.Scrollbar(selection_frame, orient="vertical", command=canvas.yview)
+        scrollable_frame = ttk.Frame(canvas)
+
+        scrollable_frame.bind(
+            "<Configure>",
+            lambda event: canvas.configure(scrollregion=canvas.bbox("all"))
         )
-        select_all_button.pack(fill="x", padx=8, pady=4)
-        self.selection_controls.append(select_all_button)
 
-        clear_selection_button = ttk.Button(
-            left_frame,
+        canvas.create_window((0, 0), window=scrollable_frame, anchor="nw")
+        canvas.configure(yscrollcommand=scrollbar.set)
+
+        canvas.pack(side="left", fill="both", expand=True)
+        scrollbar.pack(side="right", fill="y")
+
+        categories = {}
+
+        for test in self.tests:
+            if not test.get("enabled", True):
+                continue
+
+            category = test.get("category", "Other Tests")
+            categories.setdefault(category, []).append(test)
+
+        for category, tests in categories.items():
+            category_frame = ttk.LabelFrame(scrollable_frame, text=category, padding=8)
+            category_frame.pack(fill="x", expand=True, padx=4, pady=6)
+
+            for test in tests:
+                var = tk.BooleanVar(value=False)
+                self.selected_vars[test["name"]] = var
+
+                checkbox = ttk.Checkbutton(
+                    category_frame,
+                    text=test["name"],
+                    variable=var
+                )
+                checkbox.pack(anchor="w", pady=2)
+
+    def create_results_panel(self, parent):
+        results_frame = ttk.LabelFrame(parent, text="Results", padding=10)
+        results_frame.pack(side="right", fill="both", expand=True)
+
+        table_frame = ttk.Frame(results_frame)
+        table_frame.pack(fill="both", expand=True)
+
+        self.results_tree = ttk.Treeview(
+            table_frame,
+            columns=("test", "category", "status", "time"),
+            show="headings",
+            height=12
+        )
+
+        self.results_tree.heading("test", text="Test")
+        self.results_tree.heading("category", text="Category")
+        self.results_tree.heading("status", text="Status")
+        self.results_tree.heading("time", text="Time")
+
+        self.results_tree.column("test", width=240, anchor="w")
+        self.results_tree.column("category", width=210, anchor="w")
+        self.results_tree.column("status", width=90, anchor="center")
+        self.results_tree.column("time", width=120, anchor="center")
+
+        y_scrollbar = ttk.Scrollbar(
+            table_frame,
+            orient="vertical",
+            command=self.results_tree.yview
+        )
+
+        x_scrollbar = ttk.Scrollbar(
+            results_frame,
+            orient="horizontal",
+            command=self.results_tree.xview
+        )
+
+        self.results_tree.configure(
+            yscrollcommand=y_scrollbar.set,
+            xscrollcommand=x_scrollbar.set
+        )
+
+        self.results_tree.pack(side="left", fill="both", expand=True)
+        y_scrollbar.pack(side="right", fill="y")
+        x_scrollbar.pack(fill="x")
+
+        self.results_tree.tag_configure("PASS", background="#d8f5d0")
+        self.results_tree.tag_configure("FAIL", background="#f8d0d0")
+        self.results_tree.tag_configure("ERROR", background="#f8d0d0")
+        self.results_tree.tag_configure("WARN", background="#fff0b8")
+        self.results_tree.tag_configure("SKIP", background="#e0e0e0")
+        self.results_tree.tag_configure("STOPPED", background="#e0e0e0")
+        self.results_tree.tag_configure("RUNNING", background="#d0e8ff")
+
+        self.results_tree.bind("<<TreeviewSelect>>", self.show_selected_details)
+
+    def create_control_panel(self, parent):
+        control_frame = ttk.Frame(parent)
+        control_frame.pack(fill="x", pady=8)
+
+        ttk.Button(
+            control_frame,
+            text="Select All",
+            command=self.select_all_tests
+        ).pack(side="left", padx=4)
+
+        ttk.Button(
+            control_frame,
             text="Clear Selection",
             command=self.clear_selection
-        )
-        clear_selection_button.pack(fill="x", padx=8, pady=4)
-        self.selection_controls.append(clear_selection_button)
+        ).pack(side="left", padx=4)
 
-        run_selected_button = ttk.Button(
-            left_frame,
+        ttk.Button(
+            control_frame,
             text="Run Selected",
             command=self.run_selected_tests
-        )
-        run_selected_button.pack(fill="x", padx=8, pady=12)
-        self.run_controls.append(run_selected_button)
+        ).pack(side="left", padx=4)
 
-        run_auto_button = ttk.Button(
-            left_frame,
+        ttk.Button(
+            control_frame,
             text="Run All Automatic Tests",
             command=self.run_all_automatic_tests
-        )
-        run_auto_button.pack(fill="x", padx=8, pady=4)
-        self.run_controls.append(run_auto_button)
+        ).pack(side="left", padx=4)
 
-        self.stop_button = ttk.Button(
-            left_frame,
+        ttk.Button(
+            control_frame,
             text="Stop After Current Test",
-            command=self.request_stop,
-            state="disabled"
-        )
-        self.stop_button.pack(fill="x", padx=8, pady=4)
+            command=self.stop_after_current
+        ).pack(side="left", padx=4)
 
-        save_button = ttk.Button(
-            left_frame,
+        ttk.Button(
+            control_frame,
             text="Save Results",
             command=self.save_results
-        )
-        save_button.pack(fill="x", padx=8, pady=12)
-        self.run_controls.append(save_button)
+        ).pack(side="right", padx=4)
 
-        right_frame = ttk.Frame(main_frame)
-        right_frame.pack(side="right", fill="both", expand=True, padx=5, pady=5)
+        ttk.Button(
+            control_frame,
+            text="Clear Results",
+            command=self.clear_results
+        ).pack(side="right", padx=4)
 
-        instructions_frame = ttk.LabelFrame(right_frame, text="Instructions")
-        instructions_frame.pack(fill="x", padx=5, pady=5)
+    def create_progress_panel(self, parent):
+        progress_frame = ttk.Frame(parent)
+        progress_frame.pack(fill="x", pady=(0, 8))
 
-        self.instructions_box = tk.Text(
-            instructions_frame,
-            height=7,
-            wrap="word"
-        )
-        self.instructions_box.pack(fill="x", padx=5, pady=5)
-        self.instructions_box.insert("end", "Select a test to view setup instructions.")
-
-        progress_frame = ttk.LabelFrame(right_frame, text="Progress")
-        progress_frame.pack(fill="x", padx=5, pady=5)
-
-        self.progress_label = ttk.Label(
-            progress_frame,
-            text="Progress: 0 of 0 tests complete"
-        )
-        self.progress_label.pack(anchor="w", padx=5, pady=3)
+        self.progress_label = ttk.Label(progress_frame, text="Ready")
+        self.progress_label.pack(anchor="w")
 
         self.progress_bar = ttk.Progressbar(
             progress_frame,
             orient="horizontal",
-            mode="determinate",
-            maximum=100,
-            value=0
+            mode="determinate"
         )
-        self.progress_bar.pack(fill="x", padx=5, pady=5)
+        self.progress_bar.pack(fill="x", pady=4)
 
-        results_frame = ttk.LabelFrame(right_frame, text="Results")
-        results_frame.pack(fill="both", expand=True, padx=5, pady=5)
+    def create_details_panel(self, parent):
+        details_frame = ttk.LabelFrame(parent, text="Full Details", padding=8)
+        details_frame.pack(fill="both", expand=False)
 
-        table_frame = ttk.Frame(results_frame)
-        table_frame.pack(fill="both", expand=True, padx=5, pady=5)
+        text_frame = ttk.Frame(details_frame)
+        text_frame.pack(fill="both", expand=True)
 
-        columns = ("Time", "Test", "Status", "Details")
-        self.results_table = ttk.Treeview(
-            table_frame,
-            columns=columns,
-            show="headings",
-            height=10
+        self.details_text = tk.Text(
+            text_frame,
+            height=9,
+            wrap="word",
+            state="disabled"
         )
 
-        self.results_table.heading("Time", text="Time")
-        self.results_table.heading("Test", text="Test")
-        self.results_table.heading("Status", text="Status")
-        self.results_table.heading("Details", text="Details")
-
-        self.results_table.column("Time", width=155, minwidth=130, stretch=False)
-        self.results_table.column("Test", width=220, minwidth=180, stretch=True)
-        self.results_table.column("Status", width=90, minwidth=80, stretch=False)
-        self.results_table.column("Details", width=600, minwidth=350, stretch=True)
-
-        y_scroll = ttk.Scrollbar(
-            table_frame,
+        details_scrollbar = ttk.Scrollbar(
+            text_frame,
             orient="vertical",
-            command=self.results_table.yview
+            command=self.details_text.yview
         )
 
-        x_scroll = ttk.Scrollbar(
-            table_frame,
-            orient="horizontal",
-            command=self.results_table.xview
-        )
+        self.details_text.configure(yscrollcommand=details_scrollbar.set)
 
-        self.results_table.configure(
-            yscrollcommand=y_scroll.set,
-            xscrollcommand=x_scroll.set
-        )
-
-        self.results_table.grid(row=0, column=0, sticky="nsew")
-        y_scroll.grid(row=0, column=1, sticky="ns")
-        x_scroll.grid(row=1, column=0, sticky="ew")
-
-        table_frame.rowconfigure(0, weight=1)
-        table_frame.columnconfigure(0, weight=1)
-
-        self.results_table.bind(
-            "<<TreeviewSelect>>",
-            self.update_full_details_from_selection
-        )
-
-        self.setup_result_tags()
-
-        details_frame = ttk.LabelFrame(right_frame, text="Full Details")
-        details_frame.pack(fill="both", expand=True, padx=5, pady=5)
-
-        details_text_frame = ttk.Frame(details_frame)
-        details_text_frame.pack(fill="both", expand=True, padx=5, pady=5)
-
-        self.full_details_box = tk.Text(
-            details_text_frame,
-            height=8,
-            wrap="word"
-        )
-
-        details_scroll = ttk.Scrollbar(
-            details_text_frame,
-            orient="vertical",
-            command=self.full_details_box.yview
-        )
-
-        self.full_details_box.configure(yscrollcommand=details_scroll.set)
-
-        self.full_details_box.grid(row=0, column=0, sticky="nsew")
-        details_scroll.grid(row=0, column=1, sticky="ns")
-
-        details_text_frame.rowconfigure(0, weight=1)
-        details_text_frame.columnconfigure(0, weight=1)
+        self.details_text.pack(side="left", fill="both", expand=True)
+        details_scrollbar.pack(side="right", fill="y")
 
         details_button_frame = ttk.Frame(details_frame)
-        details_button_frame.pack(fill="x", padx=5, pady=5)
+        details_button_frame.pack(fill="x", pady=(6, 0))
 
         ttk.Button(
             details_button_frame,
             text="Show Selected Details",
-            command=self.show_selected_details_popup
-        ).pack(side="left", padx=5)
+            command=self.show_selected_details
+        ).pack(side="left", padx=4)
 
         ttk.Button(
             details_button_frame,
-            text="Copy Selected Details",
+            text="Copy Details",
             command=self.copy_selected_details
-        ).pack(side="left", padx=5)
+        ).pack(side="left", padx=4)
 
-        self.status_label = ttk.Label(self.root, text="Ready")
-        self.status_label.pack(pady=5)
+    def select_all_tests(self):
+        for var in self.selected_vars.values():
+            var.set(True)
 
-    def build_category_tabs(self):
-        categories = {}
+    def clear_selection(self):
+        for var in self.selected_vars.values():
+            var.set(False)
 
-        for test in self.tests:
-            category = self.infer_category(test)
+    def clear_results(self):
+        for item in self.results_tree.get_children():
+            self.results_tree.delete(item)
 
-            if category not in categories:
-                categories[category] = []
-
-            categories[category].append(test)
-
-        for category_name, category_tests in categories.items():
-            tab = ttk.Frame(self.category_notebook)
-            self.category_notebook.add(tab, text=category_name)
-
-            for test in category_tests:
-                var = tk.BooleanVar(value=False)
-
-                checkbox = ttk.Checkbutton(
-                    tab,
-                    text=test["name"],
-                    variable=var,
-                    command=self.update_instructions
-                )
-                checkbox.pack(anchor="w", padx=8, pady=4)
-
-                self.test_vars[test["name"]] = var
-                self.selection_controls.append(checkbox)
-
-    def setup_result_tags(self):
-        self.results_table.tag_configure("PASS", background="#d8f5d0")
-        self.results_table.tag_configure("FAIL", background="#f8d0d0")
-        self.results_table.tag_configure("ERROR", background="#f8d0d0")
-        self.results_table.tag_configure("WARN", background="#fff3bf")
-        self.results_table.tag_configure("SKIP", background="#e0e0e0")
-        self.results_table.tag_configure("RUNNING", background="#d7e9ff")
-        self.results_table.tag_configure("STOPPED", background="#e0e0e0")
-
-    def update_instructions(self):
-        self.instructions_box.delete("1.0", "end")
-
-        selected_tests = self.get_selected_tests()
-
-        if not selected_tests:
-            self.instructions_box.insert(
-                "end",
-                "Select a test to view setup instructions."
-            )
-            return
-
-        for test in selected_tests:
-            self.instructions_box.insert("end", f"{test['name']}:\n")
-            self.instructions_box.insert(
-                "end",
-                f"{test.get('instructions', 'No instructions provided.')}\n"
-            )
-
-            if test.get("skip_gui_setup_prompt", False):
-                self.instructions_box.insert(
-                    "end",
-                    "This test handles its own switch/setup prompts internally.\n"
-                )
-            else:
-                self.instructions_box.insert(
-                    "end",
-                    "Switch/setup checklist will be shown before this test runs.\n"
-                )
-
-            if test.get("requires_observation", False):
-                self.instructions_box.insert(
-                    "end",
-                    "Manual confirmation required after this test runs.\n"
-                )
-
-            self.instructions_box.insert("end", "\n")
+        self.result_details.clear()
+        self.set_details_text("")
+        self.progress_label.config(text="Ready")
+        self.progress_bar["value"] = 0
 
     def get_selected_tests(self):
-        selected = []
+        selected_tests = []
 
         for test in self.tests:
-            test_name = test["name"]
+            if not test.get("enabled", True):
+                continue
 
-            if self.test_vars[test_name].get():
-                selected.append(test)
+            test_name = test.get("name")
 
-        return selected
+            if test_name in self.selected_vars and self.selected_vars[test_name].get():
+                selected_tests.append(test)
+
+        return selected_tests
 
     def get_automatic_tests(self):
-        """
-        Automatic tests are tests that do not need manual observation
-        and do not handle internal pop-ups.
-        """
         automatic_tests = []
 
         for test in self.tests:
+            if not test.get("enabled", True):
+                continue
+
             requires_observation = test.get("requires_observation", False)
             has_internal_prompts = test.get("skip_gui_setup_prompt", False)
 
@@ -378,35 +338,17 @@ class PiTesterGUI:
 
         return automatic_tests
 
-    def select_all(self):
-        if self.is_running:
-            return
-
-        for var in self.test_vars.values():
-            var.set(True)
-
-        self.update_instructions()
-
-    def clear_selection(self):
-        if self.is_running:
-            return
-
-        for var in self.test_vars.values():
-            var.set(False)
-
-        self.update_instructions()
-
     def run_selected_tests(self):
         selected_tests = self.get_selected_tests()
 
         if not selected_tests:
             messagebox.showwarning(
                 "No Tests Selected",
-                "Please select at least one test."
+                "Please select at least one test to run."
             )
             return
 
-        self.start_test_run(selected_tests)
+        self.start_test_thread(selected_tests)
 
     def run_all_automatic_tests(self):
         automatic_tests = self.get_automatic_tests()
@@ -418,113 +360,195 @@ class PiTesterGUI:
             )
             return
 
-        self.start_test_run(automatic_tests)
+        self.start_test_thread(automatic_tests)
 
-    def start_test_run(self, selected_tests):
-        if self.is_running:
+    def start_test_thread(self, tests_to_run):
+        if self.running:
             messagebox.showwarning(
-                "Testing Already Running",
-                "A test run is already in progress."
+                "Tests Already Running",
+                "A test sequence is already running."
             )
             return
 
-        self.results = []
-        self.results_table.delete(*self.results_table.get_children())
-        self.set_full_details_text("")
-
+        self.running = True
         self.stop_requested = False
-        self.is_running = True
 
-        self.total_tests_to_run = len(selected_tests)
-        self.completed_tests = 0
-        self.update_progress_safe()
-
-        self.set_controls_running_state(True)
-
-        test_thread = threading.Thread(
-            target=self.run_tests_thread,
-            args=(selected_tests,),
+        thread = threading.Thread(
+            target=self.run_test_sequence,
+            args=(tests_to_run,),
             daemon=True
         )
-        test_thread.start()
+        thread.start()
 
-    def run_tests_thread(self, selected_tests):
-        self.set_status("Running selected tests...")
+    def stop_after_current(self):
+        if self.running:
+            self.stop_requested = True
+            self.progress_label.config(text="Stop requested. Current test will finish first.")
+        else:
+            self.progress_label.config(text="No test is currently running.")
 
-        for test in selected_tests:
+    def run_test_sequence(self, tests_to_run):
+        total_tests = len(tests_to_run)
+
+        self.root.after(0, lambda: self.setup_progress(total_tests))
+
+        for index, test in enumerate(tests_to_run, start=1):
             if self.stop_requested:
                 break
 
-            test_name = test["name"]
+            test_name = test.get("name", "Unnamed Test")
+            category = test.get("category", "Other Tests")
 
-            self.add_result_row_safe(
-                test_name,
-                "RUNNING",
-                "Waiting for setup checklist confirmation..."
+            self.root.after(
+                0,
+                lambda i=index, total=total_tests, name=test_name:
+                self.progress_label.config(text=f"Running {i}/{total}: {name}")
             )
 
-            if test.get("skip_gui_setup_prompt", False):
-                setup_confirmed = True
-                self.update_last_temp_row_safe(
-                    test_name,
-                    "RUNNING",
-                    "This test is handling its own switch/setup prompts."
-                )
-            else:
-                self.set_status(f"Waiting for setup confirmation: {test_name}")
+            self.root.after(
+                0,
+                lambda i=index - 1: self.update_progress(i)
+            )
 
-                setup_confirmed = self.confirm_setup_checklist(test)
+            if not test.get("skip_gui_setup_prompt", False):
+                setup_ok = self.confirm_setup_checklist(test)
 
-                if not setup_confirmed:
+                if not setup_ok:
                     result = {
                         "name": test_name,
                         "status": "SKIP",
-                        "details": "Test skipped because the setup/switch checklist was not confirmed."
+                        "details": "User skipped setup confirmation."
                     }
 
-                    result = self.add_timestamp_to_result(result)
-                    self.results.append(result)
-                    self.completed_tests += 1
-                    self.refresh_results_table_safe()
-                    self.update_progress_safe()
+                    self.root.after(
+                        0,
+                        lambda r=result, c=category: self.add_result_to_table(r, c)
+                    )
                     continue
 
-            if self.stop_requested:
-                break
+            running_result = {
+                "name": test_name,
+                "status": "RUNNING",
+                "details": "Test is currently running."
+            }
 
-            self.set_status(f"Running test: {test_name}")
-            self.update_last_temp_row_safe(
-                test_name,
-                "RUNNING",
-                "Test in progress..."
+            self.root.after(
+                0,
+                lambda r=running_result, c=category: self.add_result_to_table(r, c)
             )
 
             result = self.run_test_file(test)
 
-            if self.should_ask_for_observation(test, result):
-                self.set_status(f"Waiting for manual confirmation: {test_name}")
-                result = self.ask_for_manual_confirmation(test, result)
+            if test.get("requires_observation", False):
+                result = self.handle_observation_prompt(test, result)
 
-            result = self.add_timestamp_to_result(result)
-            self.results.append(result)
+            self.root.after(
+                0,
+                lambda r=result, c=category: self.replace_last_running_result(r, c)
+            )
 
-            self.completed_tests += 1
-            self.refresh_results_table_safe()
-            self.update_progress_safe()
+        self.root.after(0, lambda: self.finish_test_sequence(total_tests))
+
+    def setup_progress(self, total_tests):
+        self.progress_bar["maximum"] = total_tests
+        self.progress_bar["value"] = 0
+        self.progress_label.config(text="Starting tests...")
+
+    def update_progress(self, value):
+        self.progress_bar["value"] = value
+
+    def finish_test_sequence(self, total_tests):
+        self.running = False
+        self.progress_bar["value"] = total_tests
 
         if self.stop_requested:
-            self.set_status("Testing stopped after current test")
+            self.progress_label.config(text="Stopped after current test.")
         else:
-            self.set_status("Testing complete")
+            self.progress_label.config(text="Test sequence complete.")
 
-        self.is_running = False
-        self.set_controls_running_state_safe(False)
+    def confirm_setup_checklist(self, test):
+        switch_steps = test.get("switch_steps", [])
+
+        if not switch_steps:
+            old_checklist = test.get("switch_checklist", [])
+
+            if old_checklist:
+                switch_steps = [
+                    "\n".join([f"• {item}" for item in old_checklist])
+                ]
+
+        if not switch_steps:
+            return True
+
+        for step_number, step_text in enumerate(switch_steps, start=1):
+            response_holder = {"value": False}
+            event = threading.Event()
+
+            def ask_user():
+                response_holder["value"] = messagebox.askyesno(
+                    "Switch Setup Required",
+                    (
+                        f"{test.get('name', 'Test Setup')}\n\n"
+                        f"Step {step_number} of {len(switch_steps)}:\n\n"
+                        f"{step_text}\n\n"
+                        "Click Yes when ready to continue.\n"
+                        "Click No to skip this test."
+                    )
+                )
+                event.set()
+
+            self.root.after(0, ask_user)
+            event.wait()
+
+            if not response_holder["value"]:
+                return False
+
+        return True
+
+    def handle_observation_prompt(self, test, result):
+        status = result.get("status", "ERROR")
+
+        if status in ["ERROR", "FAIL"]:
+            return result
+
+        prompt = test.get(
+            "observation_prompt",
+            "Did the test behave correctly?"
+        )
+
+        response_holder = {"value": False}
+        event = threading.Event()
+
+        def ask_user():
+            response_holder["value"] = messagebox.askyesno(
+                "Manual Observation Required",
+                (
+                    f"{test.get('name', 'Manual Test')}\n\n"
+                    f"{prompt}\n\n"
+                    "Click Yes for PASS.\n"
+                    "Click No for FAIL."
+                )
+            )
+            event.set()
+
+        self.root.after(0, ask_user)
+        event.wait()
+
+        details = result.get("details", "")
+
+        if response_holder["value"]:
+            result["status"] = "PASS"
+            result["details"] = details + " Manual observation confirmed PASS."
+        else:
+            result["status"] = "FAIL"
+            result["details"] = details + " Manual observation confirmed FAIL."
+
+        return result
 
     def run_test_file(self, test):
-        test_name = test["name"]
-        test_file = self.base_dir / test["file"]
+        test_name = test.get("name", "Unnamed Test")
+        test_file = BASE_DIR / test.get("file", "")
         timeout = test.get("timeout", 30)
-
         test_args = test.get("args", [])
 
         if not test_file.exists():
@@ -534,9 +558,9 @@ class PiTesterGUI:
                 "details": f"Test file not found: {test_file}"
             }
 
-        try:
-            command = [sys.executable, str(test_file)] + test_args
+        command = [sys.executable, str(test_file)] + test_args
 
+        try:
             completed = subprocess.run(
                 command,
                 text=True,
@@ -551,7 +575,10 @@ class PiTesterGUI:
                 return {
                     "name": test_name,
                     "status": "ERROR",
-                    "details": stderr or "No output returned from test file"
+                    "details": (
+                        "Test did not return JSON output. "
+                        f"STDERR: {stderr}"
+                    )
                 }
 
             last_line = stdout.splitlines()[-1]
@@ -562,12 +589,29 @@ class PiTesterGUI:
                 return {
                     "name": test_name,
                     "status": "ERROR",
-                    "details": f"Invalid JSON output from test. Last line was: {last_line}"
+                    "details": (
+                        "Could not parse final output line as JSON. "
+                        f"Final line: {last_line} "
+                        f"Full stdout: {stdout} "
+                        f"STDERR: {stderr}"
+                    )
                 }
 
-            result.setdefault("name", test_name)
-            result.setdefault("status", "ERROR")
-            result.setdefault("details", "No details provided")
+            if "name" not in result:
+                result["name"] = test_name
+
+            if "status" not in result:
+                result["status"] = "ERROR"
+
+            if "details" not in result:
+                result["details"] = ""
+
+            if completed.returncode != 0 and result["status"] == "PASS":
+                result["status"] = "WARN"
+                result["details"] += f" Test returned nonzero exit code: {completed.returncode}."
+
+            if stderr:
+                result["details"] += f" STDERR: {stderr}"
 
             return result
 
@@ -575,7 +619,7 @@ class PiTesterGUI:
             return {
                 "name": test_name,
                 "status": "ERROR",
-                "details": f"Test timed out after {timeout} seconds"
+                "details": f"Test timed out after {timeout} seconds."
             }
 
         except Exception as e:
@@ -585,367 +629,181 @@ class PiTesterGUI:
                 "details": str(e)
             }
 
-    def confirm_setup_checklist(self, test):
-        """
-        Shows switch-position confirmation pop-ups before running a test.
+    def add_result_to_table(self, result, category):
+        result_name = result.get("name", "Unnamed Test")
+        result_status = result.get("status", "ERROR")
+        result_details = result.get("details", "")
+        timestamp = datetime.now().strftime("%H:%M:%S")
 
-        If the test has 'switch_steps' in tests.json, each step gets its own pop-up.
-        If not, it falls back to the older 'switch_checklist' field.
-        """
-
-        test_name = test.get("name", "Unknown Test")
-
-        switch_steps = test.get("switch_steps", [])
-
-        if not switch_steps:
-            old_checklist = test.get("switch_checklist", [])
-
-            if old_checklist:
-                switch_steps = [
-                    "\n".join([f"• {item}" for item in old_checklist])
-                ]
-            else:
-                switch_steps = [
-                    (
-                        "• Placeholder: Set the switch bank for this test.\n"
-                        "• Placeholder: Confirm GPIO ports are routed to the proper test peripheral.\n"
-                        "• Specific switch positions will be added later."
-                    )
-                ]
-
-        for step_number, step_text in enumerate(switch_steps, start=1):
-            response_event = threading.Event()
-            response_holder = {}
-
-            def show_popup():
-                message = (
-                    f"Before running: {test_name}\n\n"
-                    f"Switch Setup Step {step_number} of {len(switch_steps)}:\n\n"
-                    f"{step_text}\n\n"
-                    "All wiring is automatic. Only update the switch positions.\n\n"
-                    "Click Yes after the switches are set correctly.\n"
-                    "Click No to skip this test."
-                )
-
-                response_holder["confirmed"] = messagebox.askyesno(
-                    "Switch Position Confirmation",
-                    message
-                )
-
-                response_event.set()
-
-            self.root.after(0, show_popup)
-            response_event.wait()
-
-            if not response_holder.get("confirmed", False):
-                return False
-
-        return True
-
-    def should_ask_for_observation(self, test, result):
-        if not test.get("requires_observation", False):
-            return False
-
-        status = result.get("status", "ERROR")
-
-        return status in ["PASS", "WARN"]
-
-    def ask_for_manual_confirmation(self, test, result):
-        response_event = threading.Event()
-        response_holder = {}
-
-        def show_popup():
-            test_name = result.get("name", test.get("name", "Unknown Test"))
-            details = result.get("details", "No details provided.")
-
-            prompt = test.get(
-                "observation_prompt",
-                f"Did the observed output for {test_name} pass?"
-            )
-
-            message = (
-                f"{prompt}\n\n"
-                f"Test details:\n{details}\n\n"
-                "Click Yes if the physical output worked correctly.\n"
-                "Click No if the physical output did not work correctly."
-            )
-
-            response_holder["passed"] = messagebox.askyesno(
-                "Manual Test Confirmation",
-                message
-            )
-
-            response_event.set()
-
-        self.root.after(0, show_popup)
-        response_event.wait()
-
-        user_confirmed_pass = response_holder.get("passed", False)
-
-        updated_result = dict(result)
-        original_details = updated_result.get("details", "")
-
-        if user_confirmed_pass:
-            updated_result["status"] = "PASS"
-            updated_result["details"] = (
-                f"{original_details} Manual observation: PASS."
-            )
-        else:
-            updated_result["status"] = "FAIL"
-            updated_result["details"] = (
-                f"{original_details} Manual observation: FAIL."
-            )
-
-        return updated_result
-
-    def add_timestamp_to_result(self, result):
-        updated_result = dict(result)
-        updated_result["timestamp"] = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
-        return updated_result
-
-    def add_result_row_safe(self, name, status, details):
-        timestamp = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
-
-        def add_row():
-            if self.results_table.exists("temp_running"):
-                self.results_table.delete("temp_running")
-
-            self.results_table.insert(
-                "",
-                "end",
-                iid="temp_running",
-                values=(timestamp, name, status, details),
-                tags=(status,)
-            )
-
-        self.root.after(0, add_row)
-
-    def update_last_temp_row_safe(self, name, status, details):
-        timestamp = datetime.now().strftime("%Y-%m-%d %I:%M:%S %p")
-
-        def update_row():
-            if self.results_table.exists("temp_running"):
-                self.results_table.item(
-                    "temp_running",
-                    values=(timestamp, name, status, details),
-                    tags=(status,)
-                )
-
-        self.root.after(0, update_row)
-
-    def refresh_results_table_safe(self):
-        self.root.after(0, self.refresh_results_table)
-
-    def refresh_results_table(self):
-        self.results_table.delete(*self.results_table.get_children())
-
-        for index, result in enumerate(self.results):
-            status = result.get("status", "ERROR")
-
-            self.results_table.insert(
-                "",
-                "end",
-                iid=str(index),
-                values=(
-                    result.get("timestamp", ""),
-                    result.get("name", "Unknown Test"),
-                    status,
-                    result.get("details", "No details")
-                ),
-                tags=(status,)
-            )
-
-        if self.results:
-            last_index = str(len(self.results) - 1)
-            self.results_table.selection_set(last_index)
-            self.results_table.focus(last_index)
-            self.results_table.see(last_index)
-            self.display_result_details(self.results[-1])
-
-    def update_full_details_from_selection(self, event=None):
-        selected = self.results_table.selection()
-
-        if not selected:
-            return
-
-        item_id = selected[0]
-
-        try:
-            index = int(item_id)
-            if 0 <= index < len(self.results):
-                self.display_result_details(self.results[index])
-                return
-        except ValueError:
-            pass
-
-        values = self.results_table.item(item_id, "values")
-
-        if len(values) >= 4:
-            text = (
-                f"Time: {values[0]}\n"
-                f"Test: {values[1]}\n"
-                f"Status: {values[2]}\n\n"
-                f"Details:\n{values[3]}"
-            )
-            self.set_full_details_text(text)
-
-    def display_result_details(self, result):
-        text = (
-            f"Time: {result.get('timestamp', '')}\n"
-            f"Test: {result.get('name', 'Unknown Test')}\n"
-            f"Status: {result.get('status', 'ERROR')}\n\n"
-            f"Details:\n{result.get('details', 'No details')}"
+        row_id = self.results_tree.insert(
+            "",
+            "end",
+            values=(
+                result_name,
+                category,
+                result_status,
+                timestamp
+            ),
+            tags=(result_status,)
         )
 
-        self.set_full_details_text(text)
+        self.result_details[row_id] = result_details
 
-    def set_full_details_text(self, text):
-        self.full_details_box.config(state="normal")
-        self.full_details_box.delete("1.0", "end")
-        self.full_details_box.insert("end", text)
-        self.full_details_box.config(state="disabled")
+        self.results_tree.selection_set(row_id)
+        self.results_tree.see(row_id)
+        self.show_selected_details()
 
-    def get_selected_detail_text(self):
-        selected = self.results_table.selection()
+    def replace_last_running_result(self, result, category):
+        children = self.results_tree.get_children()
 
-        if not selected:
-            return ""
+        if children:
+            last_item = children[-1]
+            values = self.results_tree.item(last_item, "values")
 
-        item_id = selected[0]
+            if values and len(values) >= 3 and values[2] == "RUNNING":
+                self.results_tree.delete(last_item)
 
-        try:
-            index = int(item_id)
-            if 0 <= index < len(self.results):
-                result = self.results[index]
-                return (
-                    f"Time: {result.get('timestamp', '')}\n"
-                    f"Test: {result.get('name', 'Unknown Test')}\n"
-                    f"Status: {result.get('status', 'ERROR')}\n\n"
-                    f"Details:\n{result.get('details', 'No details')}"
-                )
-        except ValueError:
-            pass
+                if last_item in self.result_details:
+                    del self.result_details[last_item]
 
-        return self.full_details_box.get("1.0", "end").strip()
+        self.add_result_to_table(result, category)
 
-    def show_selected_details_popup(self):
-        detail_text = self.get_selected_detail_text()
+    def show_selected_details(self, event=None):
+        selected_items = self.results_tree.selection()
 
-        if not detail_text:
-            messagebox.showwarning(
-                "No Result Selected",
-                "Please select a result row first."
-            )
+        if not selected_items:
             return
 
-        messagebox.showinfo("Full Test Details", detail_text)
+        selected_item = selected_items[0]
+        values = self.results_tree.item(selected_item, "values")
+
+        if not values:
+            return
+
+        test_name = values[0]
+        category = values[1]
+        status = values[2]
+        timestamp = values[3]
+
+        details = self.result_details.get(selected_item, "No details available.")
+
+        details_output = (
+            f"Test: {test_name}\n"
+            f"Category: {category}\n"
+            f"Status: {status}\n"
+            f"Time: {timestamp}\n\n"
+            f"Details:\n{details}"
+        )
+
+        self.set_details_text(details_output)
+
+    def set_details_text(self, text):
+        self.details_text.config(state="normal")
+        self.details_text.delete("1.0", "end")
+        self.details_text.insert("end", text)
+        self.details_text.config(state="disabled")
 
     def copy_selected_details(self):
-        detail_text = self.get_selected_detail_text()
+        selected_items = self.results_tree.selection()
 
-        if not detail_text:
+        if not selected_items:
             messagebox.showwarning(
                 "No Result Selected",
-                "Please select a result row first."
+                "Select a result row first."
             )
             return
+
+        selected_item = selected_items[0]
+        values = self.results_tree.item(selected_item, "values")
+
+        if not values:
+            return
+
+        test_name = values[0]
+        category = values[1]
+        status = values[2]
+        timestamp = values[3]
+        details = self.result_details.get(selected_item, "")
+
+        copy_text = (
+            f"Test: {test_name}\n"
+            f"Category: {category}\n"
+            f"Status: {status}\n"
+            f"Time: {timestamp}\n\n"
+            f"Details:\n{details}"
+        )
 
         self.root.clipboard_clear()
-        self.root.clipboard_append(detail_text)
+        self.root.clipboard_append(copy_text)
         self.root.update()
 
-        messagebox.showinfo(
-            "Copied",
-            "Selected test details copied to clipboard."
-        )
-
-    def update_progress_safe(self):
-        self.root.after(0, self.update_progress)
-
-    def update_progress(self):
-        if self.total_tests_to_run <= 0:
-            percent = 0
-        else:
-            percent = int((self.completed_tests / self.total_tests_to_run) * 100)
-
-        self.progress_bar["value"] = percent
-
-        self.progress_label.config(
-            text=(
-                f"Progress: {self.completed_tests} of "
-                f"{self.total_tests_to_run} tests complete"
-            )
-        )
-
-    def request_stop(self):
-        if self.is_running:
-            self.stop_requested = True
-            self.set_status(
-                "Stop requested. The current test will finish, then testing will stop."
-            )
-
-    def set_controls_running_state(self, running):
-        state = "disabled" if running else "normal"
-
-        for control in self.selection_controls:
-            try:
-                control.config(state=state)
-            except Exception:
-                pass
-
-        for control in self.run_controls:
-            try:
-                control.config(state=state)
-            except Exception:
-                pass
-
-        if running:
-            self.stop_button.config(state="normal")
-        else:
-            self.stop_button.config(state="disabled")
-
-    def set_controls_running_state_safe(self, running):
-        self.root.after(0, lambda: self.set_controls_running_state(running))
-
-    def set_status(self, text):
-        self.root.after(
-            0,
-            lambda: self.status_label.config(text=text)
-        )
-
     def save_results(self):
-        if not self.results:
+        children = self.results_tree.get_children()
+
+        if not children:
             messagebox.showwarning(
                 "No Results",
-                "No test results to save."
+                "There are no results to save."
             )
             return
 
-        timestamp = datetime.now().strftime("%Y-%m-%d_%H%M%S")
-        output_file = self.base_dir / f"pi_test_results_{timestamp}.txt"
+        default_name = datetime.now().strftime("pi_test_results_%Y-%m-%d_%H%M%S.txt")
 
-        with open(output_file, "w") as file:
-            file.write("Raspberry Pi 4B Test Results\n")
-            file.write("=" * 40 + "\n")
-            file.write(f"Saved: {datetime.now().strftime('%Y-%m-%d %I:%M:%S %p')}\n")
-            file.write("=" * 40 + "\n\n")
-
-            for result in self.results:
-                file.write(f"Time: {result.get('timestamp', '')}\n")
-                file.write(f"Test: {result.get('name', 'Unknown')}\n")
-                file.write(f"Status: {result.get('status', 'ERROR')}\n")
-                file.write(f"Details: {result.get('details', '')}\n")
-                file.write("-" * 40 + "\n")
-
-        messagebox.showinfo(
-            "Results Saved",
-            f"Results saved to:\n{output_file}"
+        save_path = filedialog.asksaveasfilename(
+            title="Save Test Results",
+            defaultextension=".txt",
+            initialfile=default_name,
+            filetypes=[
+                ("Text Files", "*.txt"),
+                ("All Files", "*.*")
+            ]
         )
+
+        if not save_path:
+            return
+
+        try:
+            with open(save_path, "w", encoding="utf-8") as file:
+                file.write("Raspberry Pi Test Bench Results\n")
+                file.write("=" * 40 + "\n")
+                file.write(f"Saved: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+
+                for item in children:
+                    values = self.results_tree.item(item, "values")
+
+                    if not values:
+                        continue
+
+                    test_name = values[0]
+                    category = values[1]
+                    status = values[2]
+                    timestamp = values[3]
+                    details = self.result_details.get(item, "")
+
+                    file.write(f"Test: {test_name}\n")
+                    file.write(f"Category: {category}\n")
+                    file.write(f"Status: {status}\n")
+                    file.write(f"Time: {timestamp}\n")
+                    file.write("Details:\n")
+                    file.write(details)
+                    file.write("\n")
+                    file.write("-" * 40 + "\n\n")
+
+            messagebox.showinfo(
+                "Results Saved",
+                f"Results saved to:\n{save_path}"
+            )
+
+        except Exception as e:
+            messagebox.showerror(
+                "Save Error",
+                f"Could not save results:\n{e}"
+            )
 
 
 def main():
     root = tk.Tk()
-    app = PiTesterGUI(root)
+    app = PiTestBenchGUI(root)
     root.mainloop()
 
 
