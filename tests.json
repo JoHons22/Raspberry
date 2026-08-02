@@ -91,9 +91,8 @@
         "timeout": 60,
         "enabled": true,
         "skip_gui_setup_prompt": true
-    }
-]
-{
+    },
+    {
     "name": "USB Port Manual Test",
     "category": "Manual Hardware Tests",
     "manual_only": true,
@@ -117,3 +116,5 @@
         "Move the monitor cable to Micro HDMI Port 2. Verify that the Raspberry Pi display appears correctly on the monitor."
     ]
 }
+
+]
