@@ -180,8 +180,6 @@ def main():
         print("====================")
         print("This test cycles GPIO 2 through GPIO 27.")
         print("Only one LED segment is turned on at a time.")
-        print("The final all-LEDs-on check has been removed to reduce current draw.")
-        print("Use one current-limiting resistor per LED segment.")
         print("Display 3 only uses 6 of its 10 segments.")
         print()
 
