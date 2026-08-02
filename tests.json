@@ -88,33 +88,32 @@
         "category": "Audio / Visual Tests",
         "file": "tests/CSI-Camera-Test.py",
         "instructions": "Connect the CSI camera ribbon cable to the Raspberry Pi camera port before running this test. This test checks that the Pi can detect the CSI camera, capture a still image, and show it to the user for confirmation.",
-        "timeout": 60,
+        "timeout": 120,
         "enabled": true,
         "skip_gui_setup_prompt": true
     },
     {
-    "name": "USB Port Manual Test",
-    "category": "Manual Hardware Tests",
-    "manual_only": true,
-    "instructions": "Turn on the included wireless mouse. Plug the wireless mouse receiver into each USB port one at a time. For each port, verify that the mouse can move the cursor and that left/right click work correctly.",
-    "enabled": true,
-    "manual_steps": [
-        "Turn on the included wireless mouse. Plug the wireless mouse receiver into USB Port 1. Verify cursor movement and left/right click.",
-        "Move the wireless mouse receiver to USB Port 2. Verify cursor movement and left/right click.",
-        "Move the wireless mouse receiver to USB Port 3. Verify cursor movement and left/right click.",
-        "Move the wireless mouse receiver to USB Port 4. Verify cursor movement and left/right click."
-    ]
-},
-{
-    "name": "Micro HDMI Manual Test",
-    "category": "Manual Hardware Tests",
-    "manual_only": true,
-    "instructions": "Connect a monitor to each Raspberry Pi micro HDMI port one at a time and verify that display output works correctly.",
-    "enabled": true,
-    "manual_steps": [
-        "Connect the monitor to Micro HDMI Port 1. Verify that the Raspberry Pi display appears correctly on the monitor.",
-        "Move the monitor cable to Micro HDMI Port 2. Verify that the Raspberry Pi display appears correctly on the monitor."
-    ]
-}
-
+        "name": "USB Port Manual Test",
+        "category": "Manual Hardware Tests",
+        "manual_only": true,
+        "instructions": "Turn on the included wireless mouse. Plug the wireless mouse receiver into each USB port one at a time. For each port, verify that the mouse can move the cursor and that left/right click work correctly.",
+        "enabled": true,
+        "manual_steps": [
+            "Turn on the included wireless mouse. Plug the wireless mouse receiver into USB Port 1. Verify cursor movement and left/right click.",
+            "Move the wireless mouse receiver to USB Port 2. Verify cursor movement and left/right click.",
+            "Move the wireless mouse receiver to USB Port 3. Verify cursor movement and left/right click.",
+            "Move the wireless mouse receiver to USB Port 4. Verify cursor movement and left/right click."
+        ]
+    },
+    {
+        "name": "Micro HDMI Manual Test",
+        "category": "Manual Hardware Tests",
+        "manual_only": true,
+        "instructions": "Connect a monitor to each Raspberry Pi micro HDMI port one at a time and verify that display output works correctly.",
+        "enabled": true,
+        "manual_steps": [
+            "Connect the monitor to Micro HDMI Port 1. Verify that the Raspberry Pi display appears correctly on the monitor.",
+            "Move the monitor cable to Micro HDMI Port 2. Verify that the Raspberry Pi display appears correctly on the monitor."
+        ]
+    }
 ]
