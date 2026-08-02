@@ -55,7 +55,10 @@ class PiTestBenchGUI:
     def infer_category(self, test):
         name = test.get("name", "").lower()
 
-        if "audio" in name or "camera" in name or "csi" in name:
+        if test.get("manual_only", False):
+            return "Manual Hardware Tests"
+
+        if "audio" in name or "camera" in name or "csi" in name or "hdmi" in name:
             return "Audio / Visual Tests"
 
         return "GPIO / Communication Tests"
@@ -332,8 +335,9 @@ class PiTestBenchGUI:
 
             requires_observation = test.get("requires_observation", False)
             has_internal_prompts = test.get("skip_gui_setup_prompt", False)
+            manual_only = test.get("manual_only", False)
 
-            if not requires_observation and not has_internal_prompts:
+            if not requires_observation and not has_internal_prompts and not manual_only:
                 automatic_tests.append(test)
 
         return automatic_tests
@@ -410,22 +414,6 @@ class PiTestBenchGUI:
                 lambda i=index - 1: self.update_progress(i)
             )
 
-            if not test.get("skip_gui_setup_prompt", False):
-                setup_ok = self.confirm_setup_checklist(test)
-
-                if not setup_ok:
-                    result = {
-                        "name": test_name,
-                        "status": "SKIP",
-                        "details": "User skipped setup confirmation."
-                    }
-
-                    self.root.after(
-                        0,
-                        lambda r=result, c=category: self.add_result_to_table(r, c)
-                    )
-                    continue
-
             running_result = {
                 "name": test_name,
                 "status": "RUNNING",
@@ -437,10 +425,30 @@ class PiTestBenchGUI:
                 lambda r=running_result, c=category: self.add_result_to_table(r, c)
             )
 
-            result = self.run_test_file(test)
+            if test.get("manual_only", False):
+                result = self.run_manual_test(test)
 
-            if test.get("requires_observation", False):
-                result = self.handle_observation_prompt(test, result)
+            else:
+                if not test.get("skip_gui_setup_prompt", False):
+                    setup_ok = self.confirm_setup_checklist(test)
+
+                    if not setup_ok:
+                        result = {
+                            "name": test_name,
+                            "status": "SKIP",
+                            "details": "User skipped setup confirmation."
+                        }
+
+                        self.root.after(
+                            0,
+                            lambda r=result, c=category: self.replace_last_running_result(r, c)
+                        )
+                        continue
+
+                result = self.run_test_file(test)
+
+                if test.get("requires_observation", False):
+                    result = self.handle_observation_prompt(test, result)
 
             self.root.after(
                 0,
@@ -504,6 +512,74 @@ class PiTestBenchGUI:
                 return False
 
         return True
+
+    def run_manual_test(self, test):
+        """
+        Runs a fully manual test with no backend Python file.
+
+        Each item in manual_steps is shown in its own popup.
+        This allows each USB or HDMI port to be checked and recorded separately.
+        """
+        test_name = test.get("name", "Manual Test")
+        instructions = test.get("instructions", "")
+        manual_steps = test.get("manual_steps", [])
+
+        if not manual_steps:
+            manual_steps = [instructions]
+
+        passed_steps = 0
+        failed_steps = 0
+        detail_lines = []
+
+        for step_number, step_text in enumerate(manual_steps, start=1):
+            if self.stop_requested:
+                detail_lines.append(
+                    f"Step {step_number}: SKIP - Test sequence was stopped before this step."
+                )
+                continue
+
+            response_holder = {"value": None}
+            event = threading.Event()
+
+            def ask_user():
+                response_holder["value"] = messagebox.askyesno(
+                    "Manual Hardware Test",
+                    (
+                        f"{test_name}\n\n"
+                        f"Step {step_number} of {len(manual_steps)}:\n\n"
+                        f"{step_text}\n\n"
+                        "Click Yes if this step passed.\n"
+                        "Click No if this step failed."
+                    )
+                )
+                event.set()
+
+            self.root.after(0, ask_user)
+            event.wait()
+
+            if response_holder["value"]:
+                passed_steps += 1
+                detail_lines.append(f"Step {step_number}: PASS - {step_text}")
+            else:
+                failed_steps += 1
+                detail_lines.append(f"Step {step_number}: FAIL - {step_text}")
+
+        if failed_steps > 0:
+            overall_status = "FAIL"
+        elif passed_steps > 0:
+            overall_status = "PASS"
+        else:
+            overall_status = "SKIP"
+
+        return {
+            "name": test_name,
+            "status": overall_status,
+            "details": (
+                f"Manual hardware test completed. "
+                f"PASS={passed_steps}, FAIL={failed_steps}. "
+                + " | ".join(detail_lines)
+            )
+        }
 
     def handle_observation_prompt(self, test, result):
         status = result.get("status", "ERROR")
