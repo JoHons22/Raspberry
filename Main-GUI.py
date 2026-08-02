@@ -2,14 +2,16 @@ import json
 import subprocess
 import sys
 import threading
+import textwrap
 from datetime import datetime
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, messagebox, filedialog
+from tkinter import ttk, messagebox
 
 
 BASE_DIR = Path(__file__).resolve().parent
 TESTS_JSON = BASE_DIR / "tests.json"
+RESULTS_FILE = BASE_DIR / "pi_test_results.txt"
 
 
 class PiTestBenchGUI:
@@ -488,20 +490,29 @@ class PiTestBenchGUI:
         if not switch_steps:
             return True
 
+        instructions = test.get("instructions", "")
+
         for step_number, step_text in enumerate(switch_steps, start=1):
             response_holder = {"value": False}
             event = threading.Event()
 
             def ask_user():
+                instruction_text = ""
+
+                if instructions:
+                    instruction_text = f"Instructions:\n{instructions}\n\n"
+
                 response_holder["value"] = messagebox.askyesno(
                     "Switch Setup Required",
                     (
                         f"{test.get('name', 'Test Setup')}\n\n"
+                        f"{instruction_text}"
                         f"Step {step_number} of {len(switch_steps)}:\n\n"
                         f"{step_text}\n\n"
                         "Click Yes when ready to continue.\n"
                         "Click No to skip this test."
-                    )
+                    ),
+                    parent=self.root
                 )
                 event.set()
 
@@ -514,12 +525,6 @@ class PiTestBenchGUI:
         return True
 
     def run_manual_test(self, test):
-        """
-        Runs a fully manual test with no backend Python file.
-
-        Each item in manual_steps is shown in its own popup.
-        This allows each USB or HDMI port to be checked and recorded separately.
-        """
         test_name = test.get("name", "Manual Test")
         instructions = test.get("instructions", "")
         manual_steps = test.get("manual_steps", [])
@@ -529,10 +534,12 @@ class PiTestBenchGUI:
 
         passed_steps = 0
         failed_steps = 0
+        skipped_steps = 0
         detail_lines = []
 
         for step_number, step_text in enumerate(manual_steps, start=1):
             if self.stop_requested:
+                skipped_steps += 1
                 detail_lines.append(
                     f"Step {step_number}: SKIP - Test sequence was stopped before this step."
                 )
@@ -550,7 +557,8 @@ class PiTestBenchGUI:
                         f"{step_text}\n\n"
                         "Click Yes if this step passed.\n"
                         "Click No if this step failed."
-                    )
+                    ),
+                    parent=self.root
                 )
                 event.set()
 
@@ -566,6 +574,10 @@ class PiTestBenchGUI:
 
         if failed_steps > 0:
             overall_status = "FAIL"
+        elif skipped_steps > 0 and passed_steps == 0:
+            overall_status = "SKIP"
+        elif skipped_steps > 0:
+            overall_status = "WARN"
         elif passed_steps > 0:
             overall_status = "PASS"
         else:
@@ -576,8 +588,8 @@ class PiTestBenchGUI:
             "status": overall_status,
             "details": (
                 f"Manual hardware test completed. "
-                f"PASS={passed_steps}, FAIL={failed_steps}. "
-                + " | ".join(detail_lines)
+                f"PASS={passed_steps}, FAIL={failed_steps}, SKIP={skipped_steps}.\n"
+                + "\n".join(detail_lines)
             )
         }
 
@@ -603,7 +615,8 @@ class PiTestBenchGUI:
                     f"{prompt}\n\n"
                     "Click Yes for PASS.\n"
                     "Click No for FAIL."
-                )
+                ),
+                parent=self.root
             )
             event.set()
 
@@ -813,6 +826,40 @@ class PiTestBenchGUI:
         self.root.clipboard_append(copy_text)
         self.root.update()
 
+    def write_wrapped_details(self, file, details, width=78):
+        if not details:
+            file.write("No additional details recorded.\n")
+            return
+
+        lines = []
+
+        for raw_line in details.splitlines():
+            if " | " in raw_line:
+                parts = raw_line.split(" | ")
+                lines.extend(parts)
+            else:
+                lines.append(raw_line)
+
+        for line in lines:
+            line = line.strip()
+
+            if not line:
+                file.write("\n")
+                continue
+
+            wrapped_lines = textwrap.wrap(
+                line,
+                width=width,
+                replace_whitespace=False,
+                drop_whitespace=True
+            )
+
+            if wrapped_lines:
+                for wrapped_line in wrapped_lines:
+                    file.write(f"{wrapped_line}\n")
+            else:
+                file.write(f"{line}\n")
+
     def save_results(self):
         children = self.results_tree.get_children()
 
@@ -823,57 +870,144 @@ class PiTestBenchGUI:
             )
             return
 
-        default_name = datetime.now().strftime("pi_test_results_%Y-%m-%d_%H%M%S.txt")
-
-        save_path = filedialog.asksaveasfilename(
-            title="Save Test Results",
-            defaultextension=".txt",
-            initialfile=default_name,
-            filetypes=[
-                ("Text Files", "*.txt"),
-                ("All Files", "*.*")
-            ]
+        overwrite_confirmed = messagebox.askyesno(
+            "Overwrite Saved Results?",
+            (
+                "The test results will be saved to the same file every time:\n\n"
+                f"{RESULTS_FILE}\n\n"
+                "If an older saved results file already exists, it will be overwritten.\n\n"
+                "This helps prevent the SD card from filling up with old report files.\n\n"
+                "Do you want to continue?"
+            ),
+            parent=self.root
         )
 
-        if not save_path:
+        if not overwrite_confirmed:
             return
 
         try:
-            with open(save_path, "w", encoding="utf-8") as file:
-                file.write("Raspberry Pi Test Bench Results\n")
-                file.write("=" * 40 + "\n")
-                file.write(f"Saved: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n\n")
+            results = []
 
-                for item in children:
-                    values = self.results_tree.item(item, "values")
+            for item in children:
+                values = self.results_tree.item(item, "values")
 
-                    if not values:
-                        continue
+                if not values:
+                    continue
 
-                    test_name = values[0]
-                    category = values[1]
-                    status = values[2]
-                    timestamp = values[3]
-                    details = self.result_details.get(item, "")
+                test_name = values[0]
+                category = values[1]
+                status = values[2]
+                timestamp = values[3]
+                details = self.result_details.get(item, "")
 
-                    file.write(f"Test: {test_name}\n")
-                    file.write(f"Category: {category}\n")
-                    file.write(f"Status: {status}\n")
-                    file.write(f"Time: {timestamp}\n")
-                    file.write("Details:\n")
-                    file.write(details)
+                results.append({
+                    "test_name": test_name,
+                    "category": category,
+                    "status": status,
+                    "timestamp": timestamp,
+                    "details": details
+                })
+
+            status_counts = {
+                "PASS": 0,
+                "FAIL": 0,
+                "ERROR": 0,
+                "WARN": 0,
+                "SKIP": 0,
+                "STOPPED": 0,
+                "RUNNING": 0
+            }
+
+            for result in results:
+                status = result["status"]
+
+                if status in status_counts:
+                    status_counts[status] += 1
+                else:
+                    status_counts[status] = 1
+
+            with open(RESULTS_FILE, "w", encoding="utf-8") as file:
+                file.write("RASPBERRY PI TEST BENCH RESULTS\n")
+                file.write("=" * 80 + "\n")
+                file.write(f"Report Saved: {datetime.now().strftime('%Y-%m-%d %H:%M:%S')}\n")
+                file.write(f"Results File: {RESULTS_FILE}\n")
+                file.write("=" * 80 + "\n\n")
+
+                file.write("DEVICE / TECHNICIAN INFORMATION\n")
+                file.write("-" * 80 + "\n")
+                file.write("Raspberry Pi Serial Number: ______________________________\n")
+                file.write("Technician Name:           ______________________________\n")
+                file.write("Test Date:                 ______________________________\n")
+                file.write("Signature:                 ______________________________\n")
+                file.write("\n")
+
+                file.write("SUMMARY\n")
+                file.write("-" * 80 + "\n")
+                file.write(f"Total Tests Recorded: {len(results)}\n")
+                file.write(f"PASS:    {status_counts.get('PASS', 0)}\n")
+                file.write(f"FAIL:    {status_counts.get('FAIL', 0)}\n")
+                file.write(f"ERROR:   {status_counts.get('ERROR', 0)}\n")
+                file.write(f"WARN:    {status_counts.get('WARN', 0)}\n")
+                file.write(f"SKIP:    {status_counts.get('SKIP', 0)}\n")
+                file.write("\n")
+
+                file.write("RESULTS TABLE\n")
+                file.write("-" * 80 + "\n")
+                file.write(f"{'Test Name':<34} {'Status':<10} {'Time':<10} {'Category'}\n")
+                file.write("-" * 80 + "\n")
+
+                for result in results:
+                    test_name = result["test_name"][:33]
+                    status = result["status"]
+                    timestamp = result["timestamp"]
+                    category = result["category"][:22]
+
+                    file.write(
+                        f"{test_name:<34} {status:<10} {timestamp:<10} {category}\n"
+                    )
+
+                file.write("\n\n")
+
+                file.write("DETAILED RESULTS\n")
+                file.write("=" * 80 + "\n\n")
+
+                for index, result in enumerate(results, start=1):
+                    file.write(f"{index}. {result['test_name']}\n")
+                    file.write("-" * 80 + "\n")
+                    file.write(f"Category: {result['category']}\n")
+                    file.write(f"Status:   {result['status']}\n")
+                    file.write(f"Time:     {result['timestamp']}\n")
+                    file.write("\nDetails:\n")
+
+                    self.write_wrapped_details(file, result["details"], width=78)
+
                     file.write("\n")
-                    file.write("-" * 40 + "\n\n")
+                    file.write("=" * 80 + "\n\n")
+
+                file.write("FINAL DOCUMENTATION SIGN-OFF\n")
+                file.write("-" * 80 + "\n")
+                file.write("All required tests have been reviewed and documented.\n\n")
+                file.write("Technician Signature: ______________________________\n")
+                file.write("Date:                 ______________________________\n")
+                file.write("\n")
+                file.write("END OF REPORT\n")
 
             messagebox.showinfo(
                 "Results Saved",
-                f"Results saved to:\n{save_path}"
+                (
+                    "Results were saved successfully.\n\n"
+                    "The same file is overwritten each time to prevent old result files "
+                    "from filling the SD card.\n\n"
+                    f"File:\n{RESULTS_FILE}"
+                ),
+                parent=self.root
             )
 
         except Exception as e:
             messagebox.showerror(
                 "Save Error",
-                f"Could not save results:\n{e}"
+                f"Could not save results:\n{e}",
+                parent=self.root
             )
 
 
