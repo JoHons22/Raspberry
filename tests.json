@@ -1,7 +1,7 @@
 [
-        {
+    {
         "name": "Servo PWM Test",
-        "category": "GPIO Tests",
+        "category": "GPIO / Communication Tests",
         "file": "tests/Servo-Test.py",
         "instructions": "This single test checks four PWM GPIO setups: GPIO12, GPIO18, GPIO13, and GPIO19. All wiring is automatic. The test will prompt for switch position changes before each PWM test and ask for manual observation after each servo movement.",
         "timeout": 120,
@@ -10,39 +10,42 @@
     },
     {
         "name": "UART Loopback Test",
+        "category": "GPIO / Communication Tests",
         "file": "tests/UART-Loopback-Test.py",
         "instructions": "Connect GPIO14 TXD, physical pin 8, to GPIO15 RXD, physical pin 10, before running. Make sure UART is enabled and serial console is disabled.",
         "timeout": 10,
         "enabled": true,
         "switch_checklist": [
-        "Set All Switches to the DOWN position",
-        "Then set Switches U0 & U1 to the UP position"
+            "Set All Switches to the DOWN position",
+            "Then set Switches U0 & U1 to the UP position"
         ]
     },
     {
         "name": "SPI Test",
-        "category": "Communication Tests",
+        "category": "GPIO / Communication Tests",
         "file": "tests/SPI-Test.py",
         "instructions": "This test checks both SPI setups. Test 1 uses GPIO7, GPIO8, GPIO9, GPIO10, GPIO11, GPIO5, GPIO6, and GPIO13. Test 2 uses GPIO16, GPIO17, GPIO18, GPIO19, GPIO20, GPIO21, GPIO12, GPIO22, GPIO23, and GPIO24. All wiring is handled by the switch system.",
         "timeout": 60,
         "enabled": true,
         "switch_checklist": [
-        "Set All Switches to the DOWN position",
-        "Set All S[0-7] & P[0-9] Switches to the UP position"
+            "Set All Switches to the DOWN position",
+            "Set All S[0-7] & P[0-9] Switches to the UP position"
         ]
     },
     {
         "name": "Wi-Fi Ping Test",
+        "category": "GPIO / Communication Tests",
         "file": "tests/WiFi-Ping-Test.py",
         "instructions": "Connect the Raspberry Pi to a Wi-Fi network before running. This test checks wlan0, accepts IPv4 or IPv6, and pings google.com through the Wi-Fi interface.",
         "timeout": 35,
         "enabled": true,
         "switch_checklist": [
-        "No Specific Switch positions required"
+            "No Specific Switch positions required"
         ]
     },
     {
         "name": "GPIO 26-Pin LED Test",
+        "category": "GPIO / Communication Tests",
         "file": "tests/GPIO-26-Test.py",
         "instructions": "Connect three 10-segment LED displays with current-limiting resistors. GPIO 2 through GPIO 11 go to Display 1, GPIO 12 through GPIO 21 go to Display 2, and GPIO 22 through GPIO 27 go to the first 6 segments of Display 3. GPIO2 and GPIO3 may stay on when idle because they are I2C pins with pull-ups.",
         "timeout": 30,
@@ -50,11 +53,12 @@
         "requires_observation": true,
         "observation_prompt": "Did each LED segment light correctly, including the final all-LEDs-on check?",
         "switch_checklist": [
-        "Set ALL Switches to the DOWN position"
+            "Set ALL Switches to the DOWN position"
         ]
     },
     {
         "name": "Audio Playback Test",
+        "category": "Audio / Visual Tests",
         "file": "tests/Audio-Test.py",
         "instructions": "Insure the speaker is connected to the AUX port and turn the switch on the speaker to the ON position. Insure there is a green light on the speaker before starting test. This test generates a 5-second tone in software and requires manual listening confirmation.",
         "timeout": 15,
@@ -62,11 +66,12 @@
         "requires_observation": true,
         "observation_prompt": "Did you hear the 5-second audio tone clearly?",
         "switch_checklist": [
-        "No Specific Switch positions required"
+            "No Specific Switch positions required"
         ]
     },
     {
         "name": "I2C OLED Screen Test",
+        "category": "GPIO / Communication Tests",
         "file": "tests/OLED-Display-Test.py",
         "instructions": "Connect OLED VCC to Pi 3.3V (Pin 1), GND to Pi GND (Pin 6), SDA to GPIO2 (Pin 3), and SCL to GPIO3 (Pin 5). Ensure I2C is enabled in raspi-config.",
         "timeout": 60,
@@ -74,13 +79,13 @@
         "requires_observation": true,
         "observation_prompt": "Did the screen successfully transition through a solid bright display block, two alternating checkerboard patterns, and then completely turn off without leaving broken pixels or lines?",
         "switch_checklist": [
-        "Set ALL Switches to the DOWN position",
-        "Set Switches I0 & I1 to the UP position"
+            "Set ALL Switches to the DOWN position",
+            "Set Switches I0 & I1 to the UP position"
         ]
     },
     {
         "name": "CSI Camera Port Test",
-        "category": "Camera Tests",
+        "category": "Audio / Visual Tests",
         "file": "tests/CSI-Camera-Test.py",
         "instructions": "Connect the CSI camera ribbon cable to the Raspberry Pi camera port before running this test. This test checks that the Pi can detect the CSI camera, capture a still image, and show it to the user for confirmation.",
         "timeout": 60,
