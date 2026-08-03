@@ -4,7 +4,7 @@
         "category": "GPIO / Communication Tests",
         "file": "tests/Servo-Test.py",
         "instructions": "This single test checks four PWM GPIO setups: GPIO12, GPIO18, GPIO13, and GPIO19. All wiring is automatic. The test will prompt for switch position changes before each PWM test and ask for manual observation after each servo movement.",
-        "timeout": 120,
+        "timeout": 600,
         "enabled": true,
         "skip_gui_setup_prompt": true
     },
