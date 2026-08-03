@@ -115,5 +115,15 @@
             "Connect the monitor to Micro HDMI Port 1. Verify that the Raspberry Pi display appears correctly on the monitor.",
             "Move the monitor cable to Micro HDMI Port 2. Verify that the Raspberry Pi display appears correctly on the monitor."
         ]
-    }
+    },
+    {
+    "name": "DSI Display Manual Test",
+    "category": "Manual Hardware Tests",
+    "manual_only": true,
+    "instructions": "Connect the DSI display ribbon cable to the Raspberry Pi DSI display port and verify that the Raspberry Pi desktop appears on the DSI monitor. If the DSI display was connected after the Raspberry Pi was already booted, a restart may be required before the display is detected.",
+    "enabled": true,
+    "manual_steps": [
+        "Connect the DSI display to the Raspberry Pi DSI display port. Verify that the Raspberry Pi desktop appears correctly on the DSI monitor. If the display was plugged in after the system was already booted, restart the Raspberry Pi and check again."
+    ]
+}
 ]
