@@ -6,12 +6,7 @@ def show_touch_popup(
     no_text="No",
     ok_text="OK"
 ):
-    """
-    Touchscreen-friendly popup for the 800x480 display.
 
-    The buttons are placed near the top of the popup so they do not get pushed
-    off-screen by long instruction text.
-    """
     result = {"value": None}
 
     popup = tk.Tk()
