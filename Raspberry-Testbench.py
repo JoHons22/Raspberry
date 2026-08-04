@@ -6,7 +6,7 @@ import textwrap
 from datetime import datetime
 from pathlib import Path
 import tkinter as tk
-from tkinter import ttk, messagebox
+from tkinter import ttk
 
 
 BASE_DIR = Path(__file__).resolve().parent
@@ -32,11 +32,140 @@ class PiTestBenchGUI:
         self.load_tests()
         self.build_ui()
 
+    def show_touch_popup(
+        self,
+        title,
+        message,
+        popup_type="info",
+        yes_text="Yes",
+        no_text="No",
+        ok_text="OK"
+    ):
+        """
+        Custom popup sized for an 800x480 touchscreen.
+
+        popup_type:
+            "info"   -> one OK button
+            "yesno"  -> Yes and No buttons
+        """
+        result = {"value": None}
+
+        self.root.update_idletasks()
+
+        screen_width = self.root.winfo_screenwidth()
+        screen_height = self.root.winfo_screenheight()
+
+        popup_width = min(760, max(420, screen_width - 40))
+        popup_height = min(410, max(300, screen_height - 70))
+
+        popup_x = max(0, int((screen_width - popup_width) / 2))
+        popup_y = max(0, int((screen_height - popup_height) / 2))
+
+        popup = tk.Toplevel(self.root)
+        popup.title(title)
+        popup.geometry(f"{popup_width}x{popup_height}+{popup_x}+{popup_y}")
+        popup.resizable(False, False)
+        popup.transient(self.root)
+        popup.grab_set()
+        popup.attributes("-topmost", True)
+
+        main_frame = ttk.Frame(popup, padding=8)
+        main_frame.pack(fill="both", expand=True)
+
+        title_label = ttk.Label(
+            main_frame,
+            text=title,
+            font=("Arial", 12, "bold"),
+            anchor="center"
+        )
+        title_label.pack(fill="x", pady=(0, 6))
+
+        text_frame = ttk.Frame(main_frame)
+        text_frame.pack(fill="both", expand=True)
+
+        message_text = tk.Text(
+            text_frame,
+            wrap="word",
+            font=("Arial", 10),
+            height=10,
+            padx=6,
+            pady=6
+        )
+
+        text_scrollbar = ttk.Scrollbar(
+            text_frame,
+            orient="vertical",
+            command=message_text.yview
+        )
+
+        message_text.configure(yscrollcommand=text_scrollbar.set)
+        message_text.insert("1.0", message)
+        message_text.config(state="disabled")
+
+        message_text.pack(side="left", fill="both", expand=True)
+        text_scrollbar.pack(side="right", fill="y")
+
+        button_frame = ttk.Frame(main_frame)
+        button_frame.pack(fill="x", pady=(8, 0))
+
+        def close_with_value(value):
+            result["value"] = value
+            popup.destroy()
+
+        if popup_type == "yesno":
+            button_frame.columnconfigure(0, weight=1)
+            button_frame.columnconfigure(1, weight=1)
+
+            yes_button = ttk.Button(
+                button_frame,
+                text=yes_text,
+                command=lambda: close_with_value(True)
+            )
+            yes_button.grid(row=0, column=0, sticky="ew", padx=(0, 4), ipady=8)
+
+            no_button = ttk.Button(
+                button_frame,
+                text=no_text,
+                command=lambda: close_with_value(False)
+            )
+            no_button.grid(row=0, column=1, sticky="ew", padx=(4, 0), ipady=8)
+
+            popup.bind("<Return>", lambda event: close_with_value(True))
+            popup.bind("<Escape>", lambda event: close_with_value(False))
+
+            yes_button.focus_set()
+
+        else:
+            button_frame.columnconfigure(0, weight=1)
+
+            ok_button = ttk.Button(
+                button_frame,
+                text=ok_text,
+                command=lambda: close_with_value(True)
+            )
+            ok_button.grid(row=0, column=0, sticky="ew", padx=60, ipady=8)
+
+            popup.bind("<Return>", lambda event: close_with_value(True))
+            popup.bind("<Escape>", lambda event: close_with_value(True))
+
+            ok_button.focus_set()
+
+        def on_close():
+            if popup_type == "yesno":
+                close_with_value(False)
+            else:
+                close_with_value(True)
+
+        popup.protocol("WM_DELETE_WINDOW", on_close)
+
+        self.root.wait_window(popup)
+        return result["value"]
+
     def load_tests(self):
         if not TESTS_JSON.exists():
-            messagebox.showerror(
+            self.show_touch_popup(
                 "Missing tests.json",
-                f"Could not find tests.json at:\n{TESTS_JSON}"
+                f"Could not find tests.json at:\n\n{TESTS_JSON}"
             )
             self.tests = []
             return
@@ -50,9 +179,9 @@ class PiTestBenchGUI:
                     test["category"] = self.infer_category(test)
 
         except Exception as e:
-            messagebox.showerror(
+            self.show_touch_popup(
                 "tests.json Error",
-                f"Could not load tests.json:\n{e}"
+                f"Could not load tests.json:\n\n{e}"
             )
             self.tests = []
 
@@ -70,7 +199,6 @@ class PiTestBenchGUI:
     def build_ui(self):
         self.create_styles()
 
-        # Main scrollable window area
         outer_frame = ttk.Frame(self.root)
         outer_frame.pack(fill="both", expand=True)
 
@@ -108,7 +236,6 @@ class PiTestBenchGUI:
             self.resize_main_canvas_window
         )
 
-        # Mouse wheel scrolling
         self.root.bind_all("<MouseWheel>", self.on_mousewheel)
         self.root.bind_all("<Button-4>", self.on_mousewheel_linux)
         self.root.bind_all("<Button-5>", self.on_mousewheel_linux)
@@ -158,7 +285,7 @@ class PiTestBenchGUI:
 
         style.configure("Treeview", rowheight=21, font=("Arial", 8))
         style.configure("Treeview.Heading", font=("Arial", 8, "bold"))
-        style.configure("TButton", font=("Arial", 9), padding=(4, 5))
+        style.configure("TButton", font=("Arial", 10), padding=(4, 6))
         style.configure("TCheckbutton", font=("Arial", 8))
         style.configure("TLabelframe.Label", font=("Arial", 9, "bold"))
         style.configure("TLabel", font=("Arial", 9))
@@ -366,54 +493,23 @@ class PiTestBenchGUI:
 
         return selected_tests
 
-    def get_automatic_tests(self):
-        automatic_tests = []
-
-        for test in self.tests:
-            if not test.get("enabled", True):
-                continue
-
-            requires_observation = test.get("requires_observation", False)
-            has_internal_prompts = test.get("skip_gui_setup_prompt", False)
-            manual_only = test.get("manual_only", False)
-
-            if not requires_observation and not has_internal_prompts and not manual_only:
-                automatic_tests.append(test)
-
-        return automatic_tests
-
     def run_selected_tests(self):
         selected_tests = self.get_selected_tests()
 
         if not selected_tests:
-            messagebox.showwarning(
+            self.show_touch_popup(
                 "No Tests Selected",
-                "Please select at least one test to run.",
-                parent=self.root
+                "Please select at least one test to run."
             )
             return
 
         self.start_test_thread(selected_tests)
 
-    def run_all_automatic_tests(self):
-        automatic_tests = self.get_automatic_tests()
-
-        if not automatic_tests:
-            messagebox.showwarning(
-                "No Automatic Tests",
-                "No automatic tests are available.",
-                parent=self.root
-            )
-            return
-
-        self.start_test_thread(automatic_tests)
-
     def start_test_thread(self, tests_to_run):
         if self.running:
-            messagebox.showwarning(
+            self.show_touch_popup(
                 "Tests Already Running",
-                "A test sequence is already running.",
-                parent=self.root
+                "A test sequence is already running."
             )
             return
 
@@ -426,13 +522,6 @@ class PiTestBenchGUI:
             daemon=True
         )
         thread.start()
-
-    def stop_after_current(self):
-        if self.running:
-            self.stop_requested = True
-            self.progress_label.config(text="Stop requested. Current test will finish first.")
-        else:
-            self.progress_label.config(text="No test is currently running.")
 
     def run_test_sequence(self, tests_to_run):
         total_tests = len(tests_to_run)
@@ -535,17 +624,19 @@ class PiTestBenchGUI:
                 if instructions:
                     instruction_text = f"Instructions:\n{instructions}\n\n"
 
-                response_holder["value"] = messagebox.askyesno(
+                response_holder["value"] = self.show_touch_popup(
                     "Switch Setup Required",
                     (
                         f"{test.get('name', 'Test Setup')}\n\n"
                         f"{instruction_text}"
                         f"Step {step_number} of {len(switch_steps)}:\n\n"
                         f"{step_text}\n\n"
-                        "Click Yes when ready to continue.\n"
-                        "Click No to skip this test."
+                        "Press Continue when ready to run the test.\n"
+                        "Press Skip to skip this test."
                     ),
-                    parent=self.root
+                    popup_type="yesno",
+                    yes_text="Continue",
+                    no_text="Skip"
                 )
                 event.set()
 
@@ -585,16 +676,18 @@ class PiTestBenchGUI:
                 step_number=step_number,
                 step_text=step_text
             ):
-                response_holder["value"] = messagebox.askyesno(
+                response_holder["value"] = self.show_touch_popup(
                     "Manual Hardware Test",
                     (
                         f"{test_name}\n\n"
                         f"Step {step_number} of {len(manual_steps)}:\n\n"
                         f"{step_text}\n\n"
-                        "Click Yes if this step passed.\n"
-                        "Click No if this step failed."
+                        "Press PASS if this step worked correctly.\n"
+                        "Press FAIL if this step did not work correctly."
                     ),
-                    parent=self.root
+                    popup_type="yesno",
+                    yes_text="PASS",
+                    no_text="FAIL"
                 )
                 event.set()
 
@@ -644,15 +737,17 @@ class PiTestBenchGUI:
         event = threading.Event()
 
         def ask_user():
-            response_holder["value"] = messagebox.askyesno(
+            response_holder["value"] = self.show_touch_popup(
                 "Manual Observation Required",
                 (
                     f"{test.get('name', 'Manual Test')}\n\n"
                     f"{prompt}\n\n"
-                    "Click Yes for PASS.\n"
-                    "Click No for FAIL."
+                    "Press PASS if the test behaved correctly.\n"
+                    "Press FAIL if the test did not behave correctly."
                 ),
-                parent=self.root
+                popup_type="yesno",
+                yes_text="PASS",
+                no_text="FAIL"
             )
             event.set()
 
@@ -866,14 +961,13 @@ class PiTestBenchGUI:
         children = self.results_tree.get_children()
 
         if not children:
-            messagebox.showwarning(
+            self.show_touch_popup(
                 "No Results",
-                "There are no results to save.",
-                parent=self.root
+                "There are no results to save."
             )
             return
 
-        overwrite_confirmed = messagebox.askyesno(
+        overwrite_confirmed = self.show_touch_popup(
             "Overwrite Saved Results?",
             (
                 "The test results will be saved to the same file every time:\n\n"
@@ -882,7 +976,9 @@ class PiTestBenchGUI:
                 "This helps prevent the SD card from filling up with old report files.\n\n"
                 "Do you want to continue?"
             ),
-            parent=self.root
+            popup_type="yesno",
+            yes_text="Save",
+            no_text="Cancel"
         )
 
         if not overwrite_confirmed:
@@ -995,22 +1091,20 @@ class PiTestBenchGUI:
                 file.write("\n")
                 file.write("END OF REPORT\n")
 
-            messagebox.showinfo(
+            self.show_touch_popup(
                 "Results Saved",
                 (
                     "Results were saved successfully.\n\n"
                     "The same file is overwritten each time to prevent old result files "
                     "from filling the SD card.\n\n"
                     f"File:\n{RESULTS_FILE}"
-                ),
-                parent=self.root
+                )
             )
 
         except Exception as e:
-            messagebox.showerror(
+            self.show_touch_popup(
                 "Save Error",
-                f"Could not save results:\n{e}",
-                parent=self.root
+                f"Could not save results:\n\n{e}"
             )
 
 
