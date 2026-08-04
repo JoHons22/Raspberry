@@ -70,25 +70,83 @@ class PiTestBenchGUI:
     def build_ui(self):
         self.create_styles()
 
-        main_frame = ttk.Frame(self.root, padding=6)
-        main_frame.pack(fill="both", expand=True)
+        # Main scrollable window area
+        outer_frame = ttk.Frame(self.root)
+        outer_frame.pack(fill="both", expand=True)
+
+        self.main_canvas = tk.Canvas(
+            outer_frame,
+            highlightthickness=0
+        )
+
+        self.main_scrollbar = ttk.Scrollbar(
+            outer_frame,
+            orient="vertical",
+            command=self.main_canvas.yview
+        )
+
+        self.main_canvas.configure(yscrollcommand=self.main_scrollbar.set)
+
+        self.main_scrollbar.pack(side="right", fill="y")
+        self.main_canvas.pack(side="left", fill="both", expand=True)
+
+        self.scrollable_main_frame = ttk.Frame(self.main_canvas, padding=5)
+
+        self.main_canvas_window = self.main_canvas.create_window(
+            (0, 0),
+            window=self.scrollable_main_frame,
+            anchor="nw"
+        )
+
+        self.scrollable_main_frame.bind(
+            "<Configure>",
+            self.update_main_scroll_region
+        )
+
+        self.main_canvas.bind(
+            "<Configure>",
+            self.resize_main_canvas_window
+        )
+
+        # Mouse wheel scrolling
+        self.root.bind_all("<MouseWheel>", self.on_mousewheel)
+        self.root.bind_all("<Button-4>", self.on_mousewheel_linux)
+        self.root.bind_all("<Button-5>", self.on_mousewheel_linux)
 
         title_label = ttk.Label(
-            main_frame,
+            self.scrollable_main_frame,
             text="Raspberry Pi Test Bench",
-            font=("Arial", 14, "bold")
+            font=("Arial", 13, "bold")
         )
-        title_label.pack(pady=(0, 4))
+        title_label.pack(pady=(0, 3))
 
-        top_frame = ttk.Frame(main_frame)
-        top_frame.pack(fill="both", expand=True)
+        top_frame = ttk.Frame(self.scrollable_main_frame)
+        top_frame.pack(fill="x", expand=False)
 
         self.create_test_selection_panel(top_frame)
         self.create_results_panel(top_frame)
 
-        self.create_control_panel(main_frame)
-        self.create_status_panel(main_frame)
-        self.create_details_panel(main_frame)
+        self.create_control_panel(self.scrollable_main_frame)
+        self.create_status_panel(self.scrollable_main_frame)
+        self.create_details_panel(self.scrollable_main_frame)
+
+    def update_main_scroll_region(self, event=None):
+        self.main_canvas.configure(scrollregion=self.main_canvas.bbox("all"))
+
+    def resize_main_canvas_window(self, event):
+        self.main_canvas.itemconfig(
+            self.main_canvas_window,
+            width=event.width
+        )
+
+    def on_mousewheel(self, event):
+        self.main_canvas.yview_scroll(int(-1 * (event.delta / 120)), "units")
+
+    def on_mousewheel_linux(self, event):
+        if event.num == 4:
+            self.main_canvas.yview_scroll(-1, "units")
+        elif event.num == 5:
+            self.main_canvas.yview_scroll(1, "units")
 
     def create_styles(self):
         style = ttk.Style()
@@ -98,19 +156,30 @@ class PiTestBenchGUI:
         except Exception:
             pass
 
-        style.configure("Treeview", rowheight=22, font=("Arial", 9))
-        style.configure("Treeview.Heading", font=("Arial", 9, "bold"))
-        style.configure("TButton", font=("Arial", 9), padding=(4, 4))
-        style.configure("TCheckbutton", font=("Arial", 9))
+        style.configure("Treeview", rowheight=21, font=("Arial", 8))
+        style.configure("Treeview.Heading", font=("Arial", 8, "bold"))
+        style.configure("TButton", font=("Arial", 9), padding=(4, 5))
+        style.configure("TCheckbutton", font=("Arial", 8))
         style.configure("TLabelframe.Label", font=("Arial", 9, "bold"))
         style.configure("TLabel", font=("Arial", 9))
 
     def create_test_selection_panel(self, parent):
-        selection_frame = ttk.LabelFrame(parent, text="Available Tests", padding=6)
-        selection_frame.pack(side="left", fill="both", expand=False, padx=(0, 6))
+        selection_frame = ttk.LabelFrame(parent, text="Available Tests", padding=4)
+        selection_frame.pack(side="left", fill="both", expand=False, padx=(0, 5))
 
-        canvas = tk.Canvas(selection_frame, width=230, highlightthickness=0)
-        scrollbar = ttk.Scrollbar(selection_frame, orient="vertical", command=canvas.yview)
+        canvas = tk.Canvas(
+            selection_frame,
+            width=225,
+            height=145,
+            highlightthickness=0
+        )
+
+        scrollbar = ttk.Scrollbar(
+            selection_frame,
+            orient="vertical",
+            command=canvas.yview
+        )
+
         scrollable_frame = ttk.Frame(canvas)
 
         scrollable_frame.bind(
@@ -134,8 +203,8 @@ class PiTestBenchGUI:
             categories.setdefault(category, []).append(test)
 
         for category, tests in categories.items():
-            category_frame = ttk.LabelFrame(scrollable_frame, text=category, padding=5)
-            category_frame.pack(fill="x", expand=True, padx=3, pady=4)
+            category_frame = ttk.LabelFrame(scrollable_frame, text=category, padding=4)
+            category_frame.pack(fill="x", expand=True, padx=2, pady=3)
 
             for test in tests:
                 var = tk.BooleanVar(value=False)
@@ -149,7 +218,7 @@ class PiTestBenchGUI:
                 checkbox.pack(anchor="w", pady=1)
 
     def create_results_panel(self, parent):
-        results_frame = ttk.LabelFrame(parent, text="Results", padding=6)
+        results_frame = ttk.LabelFrame(parent, text="Results", padding=4)
         results_frame.pack(side="right", fill="both", expand=True)
 
         table_frame = ttk.Frame(results_frame)
@@ -159,7 +228,7 @@ class PiTestBenchGUI:
             table_frame,
             columns=("test", "category", "status", "time"),
             show="headings",
-            height=8
+            height=6
         )
 
         self.results_tree.heading("test", text="Test")
@@ -167,10 +236,10 @@ class PiTestBenchGUI:
         self.results_tree.heading("status", text="Status")
         self.results_tree.heading("time", text="Time")
 
-        self.results_tree.column("test", width=170, anchor="w")
-        self.results_tree.column("category", width=150, anchor="w")
-        self.results_tree.column("status", width=70, anchor="center")
-        self.results_tree.column("time", width=70, anchor="center")
+        self.results_tree.column("test", width=150, anchor="w")
+        self.results_tree.column("category", width=120, anchor="w")
+        self.results_tree.column("status", width=65, anchor="center")
+        self.results_tree.column("time", width=65, anchor="center")
 
         y_scrollbar = ttk.Scrollbar(
             table_frame,
@@ -230,52 +299,27 @@ class PiTestBenchGUI:
 
         ttk.Button(
             control_frame,
-            text="Run Auto",
-            command=self.run_all_automatic_tests
-        ).grid(row=0, column=3, sticky="ew", padx=2, pady=2)
-
-        ttk.Button(
-            control_frame,
-            text="Stop After Current",
-            command=self.stop_after_current
-        ).grid(row=1, column=0, sticky="ew", padx=2, pady=2)
-
-        ttk.Button(
-            control_frame,
             text="Save Results",
             command=self.save_results
-        ).grid(row=1, column=1, sticky="ew", padx=2, pady=2)
-
-        ttk.Button(
-            control_frame,
-            text="Clear Results",
-            command=self.clear_results
-        ).grid(row=1, column=2, sticky="ew", padx=2, pady=2)
-
-        ttk.Button(
-            control_frame,
-            text="Show Details",
-            command=self.show_selected_details
-        ).grid(row=1, column=3, sticky="ew", padx=2, pady=2)
+        ).grid(row=0, column=3, sticky="ew", padx=2, pady=2)
 
     def create_status_panel(self, parent):
         status_frame = ttk.Frame(parent)
         status_frame.pack(fill="x", pady=(0, 2))
 
-        # Progress bar removed for 800x480 layout.
         self.progress_label = ttk.Label(status_frame, text="Ready")
         self.progress_label.pack(anchor="w")
 
     def create_details_panel(self, parent):
         details_frame = ttk.LabelFrame(parent, text="Full Details", padding=5)
-        details_frame.pack(fill="x", expand=False)
+        details_frame.pack(fill="x", expand=False, pady=(2, 5))
 
         text_frame = ttk.Frame(details_frame)
         text_frame.pack(fill="both", expand=True)
 
         self.details_text = tk.Text(
             text_frame,
-            height=4,
+            height=10,
             wrap="word",
             state="disabled",
             font=("Arial", 9)
