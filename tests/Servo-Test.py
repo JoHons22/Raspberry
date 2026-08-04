@@ -54,15 +54,7 @@ PWM_TESTS = [
 ]
 
 
-def create_popup_root():
-    root = tk.Tk()
-    root.withdraw()
-    root.attributes("-topmost", True)
-    return root
-
-
 def show_touch_popup(
-    root,
     title,
     message,
     popup_type="yesno",
@@ -71,15 +63,19 @@ def show_touch_popup(
     ok_text="OK"
 ):
     """
-    Custom touchscreen popup sized for an 800x480 display.
-    Used because normal messagebox popups can be too large or poorly placed.
+    Creates a visible touchscreen-friendly popup.
+
+    This version uses the Tk root window directly instead of using
+    a hidden root plus a Toplevel window. This prevents the servo test
+    from stalling while waiting for an invisible popup.
     """
     result = {"value": None}
 
-    root.update_idletasks()
+    popup = tk.Tk()
+    popup.title(title)
 
-    screen_width = root.winfo_screenwidth()
-    screen_height = root.winfo_screenheight()
+    screen_width = popup.winfo_screenwidth()
+    screen_height = popup.winfo_screenheight()
 
     popup_width = min(760, max(420, screen_width - 40))
     popup_height = min(400, max(300, screen_height - 80))
@@ -87,13 +83,19 @@ def show_touch_popup(
     popup_x = max(0, int((screen_width - popup_width) / 2))
     popup_y = max(0, int((screen_height - popup_height) / 2))
 
-    popup = tk.Toplevel(root)
-    popup.title(title)
     popup.geometry(f"{popup_width}x{popup_height}+{popup_x}+{popup_y}")
     popup.resizable(False, False)
-    popup.transient(root)
-    popup.grab_set()
     popup.attributes("-topmost", True)
+
+    style = ttk.Style()
+
+    try:
+        style.theme_use("clam")
+    except Exception:
+        pass
+
+    style.configure("TButton", font=("Arial", 11), padding=(6, 8))
+    style.configure("TLabel", font=("Arial", 10))
 
     main_frame = ttk.Frame(popup, padding=8)
     main_frame.pack(fill="both", expand=True)
@@ -135,7 +137,7 @@ def show_touch_popup(
 
     def close_with_value(value):
         result["value"] = value
-        popup.destroy()
+        popup.quit()
 
     if popup_type == "yesno":
         button_frame.columnconfigure(0, weight=1)
@@ -157,7 +159,6 @@ def show_touch_popup(
 
         popup.bind("<Return>", lambda event: close_with_value(True))
         popup.bind("<Escape>", lambda event: close_with_value(False))
-
         yes_button.focus_set()
 
     else:
@@ -168,11 +169,10 @@ def show_touch_popup(
             text=ok_text,
             command=lambda: close_with_value(True)
         )
-        ok_button.grid(row=0, column=0, sticky="ew", padx=60, ipady=8)
+        ok_button.grid(row=0, column=0, sticky="ew", padx=80, ipady=8)
 
         popup.bind("<Return>", lambda event: close_with_value(True))
         popup.bind("<Escape>", lambda event: close_with_value(True))
-
         ok_button.focus_set()
 
     def on_close():
@@ -183,13 +183,22 @@ def show_touch_popup(
 
     popup.protocol("WM_DELETE_WINDOW", on_close)
 
-    root.wait_window(popup)
+    popup.update_idletasks()
+    popup.lift()
+    popup.focus_force()
+
+    popup.mainloop()
+
+    try:
+        popup.destroy()
+    except Exception:
+        pass
+
     return result["value"]
 
 
-def ask_switch_confirmation(root, test_info):
+def ask_switch_confirmation(test_info):
     return show_touch_popup(
-        root,
         "Servo Switch Setup",
         (
             f"{test_info['name']}\n\n"
@@ -203,9 +212,8 @@ def ask_switch_confirmation(root, test_info):
     )
 
 
-def ask_observation_confirmation(root, test_info):
+def ask_observation_confirmation(test_info):
     return show_touch_popup(
-        root,
         "Servo Movement Check",
         (
             f"{test_info['name']}\n\n"
@@ -239,11 +247,11 @@ def set_angle(pwm, angle):
     time.sleep(PAUSE_BETWEEN_ANGLES)
 
 
-def run_single_pwm_test(root, test_info):
+def run_single_pwm_test(test_info):
     gpio_pin = test_info["gpio"]
     pwm = None
 
-    switch_ready = ask_switch_confirmation(root, test_info)
+    switch_ready = ask_switch_confirmation(test_info)
 
     if not switch_ready:
         return {
@@ -268,7 +276,7 @@ def run_single_pwm_test(root, test_info):
         set_angle(pwm, 180)
         set_angle(pwm, 90)
 
-        observed_pass = ask_observation_confirmation(root, test_info)
+        observed_pass = ask_observation_confirmation(test_info)
 
         if observed_pass:
             return {
@@ -422,12 +430,11 @@ def combine_results(results, restore_message):
 
 
 def main():
-    root = create_popup_root()
     results = []
 
     try:
         for test_info in PWM_TESTS:
-            result = run_single_pwm_test(root, test_info)
+            result = run_single_pwm_test(test_info)
             results.append(result)
 
     finally:
@@ -438,11 +445,6 @@ def main():
 
         time.sleep(CLEANUP_DELAY)
         restore_message = restore_shared_pin_modes()
-
-        try:
-            root.destroy()
-        except Exception:
-            pass
 
     final_result = combine_results(results, restore_message)
     print(json.dumps(final_result))
