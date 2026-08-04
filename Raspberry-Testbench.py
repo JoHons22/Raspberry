@@ -18,8 +18,10 @@ class PiTestBenchGUI:
     def __init__(self, root):
         self.root = root
         self.root.title("Raspberry Pi Test Bench")
-        self.root.geometry("1000x720")
-        self.root.minsize(900, 620)
+
+        # Optimized for 800x480 touchscreen display
+        self.root.geometry("800x480")
+        self.root.minsize(780, 460)
 
         self.tests = []
         self.selected_vars = {}
@@ -68,15 +70,15 @@ class PiTestBenchGUI:
     def build_ui(self):
         self.create_styles()
 
-        main_frame = ttk.Frame(self.root, padding=10)
+        main_frame = ttk.Frame(self.root, padding=6)
         main_frame.pack(fill="both", expand=True)
 
         title_label = ttk.Label(
             main_frame,
             text="Raspberry Pi Test Bench",
-            font=("Arial", 18, "bold")
+            font=("Arial", 14, "bold")
         )
-        title_label.pack(pady=(0, 8))
+        title_label.pack(pady=(0, 4))
 
         top_frame = ttk.Frame(main_frame)
         top_frame.pack(fill="both", expand=True)
@@ -85,7 +87,7 @@ class PiTestBenchGUI:
         self.create_results_panel(top_frame)
 
         self.create_control_panel(main_frame)
-        self.create_progress_panel(main_frame)
+        self.create_status_panel(main_frame)
         self.create_details_panel(main_frame)
 
     def create_styles(self):
@@ -96,14 +98,18 @@ class PiTestBenchGUI:
         except Exception:
             pass
 
-        style.configure("Treeview", rowheight=24)
-        style.configure("Treeview.Heading", font=("Arial", 10, "bold"))
+        style.configure("Treeview", rowheight=22, font=("Arial", 9))
+        style.configure("Treeview.Heading", font=("Arial", 9, "bold"))
+        style.configure("TButton", font=("Arial", 9), padding=(4, 4))
+        style.configure("TCheckbutton", font=("Arial", 9))
+        style.configure("TLabelframe.Label", font=("Arial", 9, "bold"))
+        style.configure("TLabel", font=("Arial", 9))
 
     def create_test_selection_panel(self, parent):
-        selection_frame = ttk.LabelFrame(parent, text="Available Tests", padding=10)
-        selection_frame.pack(side="left", fill="both", expand=False, padx=(0, 8))
+        selection_frame = ttk.LabelFrame(parent, text="Available Tests", padding=6)
+        selection_frame.pack(side="left", fill="both", expand=False, padx=(0, 6))
 
-        canvas = tk.Canvas(selection_frame, width=300, highlightthickness=0)
+        canvas = tk.Canvas(selection_frame, width=230, highlightthickness=0)
         scrollbar = ttk.Scrollbar(selection_frame, orient="vertical", command=canvas.yview)
         scrollable_frame = ttk.Frame(canvas)
 
@@ -128,8 +134,8 @@ class PiTestBenchGUI:
             categories.setdefault(category, []).append(test)
 
         for category, tests in categories.items():
-            category_frame = ttk.LabelFrame(scrollable_frame, text=category, padding=8)
-            category_frame.pack(fill="x", expand=True, padx=4, pady=6)
+            category_frame = ttk.LabelFrame(scrollable_frame, text=category, padding=5)
+            category_frame.pack(fill="x", expand=True, padx=3, pady=4)
 
             for test in tests:
                 var = tk.BooleanVar(value=False)
@@ -140,10 +146,10 @@ class PiTestBenchGUI:
                     text=test["name"],
                     variable=var
                 )
-                checkbox.pack(anchor="w", pady=2)
+                checkbox.pack(anchor="w", pady=1)
 
     def create_results_panel(self, parent):
-        results_frame = ttk.LabelFrame(parent, text="Results", padding=10)
+        results_frame = ttk.LabelFrame(parent, text="Results", padding=6)
         results_frame.pack(side="right", fill="both", expand=True)
 
         table_frame = ttk.Frame(results_frame)
@@ -153,7 +159,7 @@ class PiTestBenchGUI:
             table_frame,
             columns=("test", "category", "status", "time"),
             show="headings",
-            height=12
+            height=8
         )
 
         self.results_tree.heading("test", text="Test")
@@ -161,10 +167,10 @@ class PiTestBenchGUI:
         self.results_tree.heading("status", text="Status")
         self.results_tree.heading("time", text="Time")
 
-        self.results_tree.column("test", width=240, anchor="w")
-        self.results_tree.column("category", width=210, anchor="w")
-        self.results_tree.column("status", width=90, anchor="center")
-        self.results_tree.column("time", width=120, anchor="center")
+        self.results_tree.column("test", width=170, anchor="w")
+        self.results_tree.column("category", width=150, anchor="w")
+        self.results_tree.column("status", width=70, anchor="center")
+        self.results_tree.column("time", width=70, anchor="center")
 
         y_scrollbar = ttk.Scrollbar(
             table_frame,
@@ -198,77 +204,81 @@ class PiTestBenchGUI:
         self.results_tree.bind("<<TreeviewSelect>>", self.show_selected_details)
 
     def create_control_panel(self, parent):
-        control_frame = ttk.Frame(parent)
-        control_frame.pack(fill="x", pady=8)
+        control_frame = ttk.LabelFrame(parent, text="Controls", padding=4)
+        control_frame.pack(fill="x", pady=(4, 2))
+
+        for col in range(4):
+            control_frame.columnconfigure(col, weight=1)
 
         ttk.Button(
             control_frame,
             text="Select All",
             command=self.select_all_tests
-        ).pack(side="left", padx=4)
+        ).grid(row=0, column=0, sticky="ew", padx=2, pady=2)
 
         ttk.Button(
             control_frame,
             text="Clear Selection",
             command=self.clear_selection
-        ).pack(side="left", padx=4)
+        ).grid(row=0, column=1, sticky="ew", padx=2, pady=2)
 
         ttk.Button(
             control_frame,
             text="Run Selected",
             command=self.run_selected_tests
-        ).pack(side="left", padx=4)
+        ).grid(row=0, column=2, sticky="ew", padx=2, pady=2)
 
         ttk.Button(
             control_frame,
-            text="Run All Automatic Tests",
+            text="Run Auto",
             command=self.run_all_automatic_tests
-        ).pack(side="left", padx=4)
+        ).grid(row=0, column=3, sticky="ew", padx=2, pady=2)
 
         ttk.Button(
             control_frame,
-            text="Stop After Current Test",
+            text="Stop After Current",
             command=self.stop_after_current
-        ).pack(side="left", padx=4)
+        ).grid(row=1, column=0, sticky="ew", padx=2, pady=2)
 
         ttk.Button(
             control_frame,
             text="Save Results",
             command=self.save_results
-        ).pack(side="right", padx=4)
+        ).grid(row=1, column=1, sticky="ew", padx=2, pady=2)
 
         ttk.Button(
             control_frame,
             text="Clear Results",
             command=self.clear_results
-        ).pack(side="right", padx=4)
+        ).grid(row=1, column=2, sticky="ew", padx=2, pady=2)
 
-    def create_progress_panel(self, parent):
-        progress_frame = ttk.Frame(parent)
-        progress_frame.pack(fill="x", pady=(0, 8))
+        ttk.Button(
+            control_frame,
+            text="Show Details",
+            command=self.show_selected_details
+        ).grid(row=1, column=3, sticky="ew", padx=2, pady=2)
 
-        self.progress_label = ttk.Label(progress_frame, text="Ready")
+    def create_status_panel(self, parent):
+        status_frame = ttk.Frame(parent)
+        status_frame.pack(fill="x", pady=(0, 2))
+
+        # Progress bar removed for 800x480 layout.
+        self.progress_label = ttk.Label(status_frame, text="Ready")
         self.progress_label.pack(anchor="w")
 
-        self.progress_bar = ttk.Progressbar(
-            progress_frame,
-            orient="horizontal",
-            mode="determinate"
-        )
-        self.progress_bar.pack(fill="x", pady=4)
-
     def create_details_panel(self, parent):
-        details_frame = ttk.LabelFrame(parent, text="Full Details", padding=8)
-        details_frame.pack(fill="both", expand=False)
+        details_frame = ttk.LabelFrame(parent, text="Full Details", padding=5)
+        details_frame.pack(fill="x", expand=False)
 
         text_frame = ttk.Frame(details_frame)
         text_frame.pack(fill="both", expand=True)
 
         self.details_text = tk.Text(
             text_frame,
-            height=9,
+            height=4,
             wrap="word",
-            state="disabled"
+            state="disabled",
+            font=("Arial", 9)
         )
 
         details_scrollbar = ttk.Scrollbar(
@@ -281,21 +291,6 @@ class PiTestBenchGUI:
 
         self.details_text.pack(side="left", fill="both", expand=True)
         details_scrollbar.pack(side="right", fill="y")
-
-        details_button_frame = ttk.Frame(details_frame)
-        details_button_frame.pack(fill="x", pady=(6, 0))
-
-        ttk.Button(
-            details_button_frame,
-            text="Show Selected Details",
-            command=self.show_selected_details
-        ).pack(side="left", padx=4)
-
-        ttk.Button(
-            details_button_frame,
-            text="Copy Details",
-            command=self.copy_selected_details
-        ).pack(side="left", padx=4)
 
     def select_all_tests(self):
         for var in self.selected_vars.values():
@@ -312,7 +307,6 @@ class PiTestBenchGUI:
         self.result_details.clear()
         self.set_details_text("")
         self.progress_label.config(text="Ready")
-        self.progress_bar["value"] = 0
 
     def get_selected_tests(self):
         selected_tests = []
@@ -350,7 +344,8 @@ class PiTestBenchGUI:
         if not selected_tests:
             messagebox.showwarning(
                 "No Tests Selected",
-                "Please select at least one test to run."
+                "Please select at least one test to run.",
+                parent=self.root
             )
             return
 
@@ -362,7 +357,8 @@ class PiTestBenchGUI:
         if not automatic_tests:
             messagebox.showwarning(
                 "No Automatic Tests",
-                "No automatic tests are available."
+                "No automatic tests are available.",
+                parent=self.root
             )
             return
 
@@ -372,7 +368,8 @@ class PiTestBenchGUI:
         if self.running:
             messagebox.showwarning(
                 "Tests Already Running",
-                "A test sequence is already running."
+                "A test sequence is already running.",
+                parent=self.root
             )
             return
 
@@ -409,11 +406,6 @@ class PiTestBenchGUI:
                 0,
                 lambda i=index, total=total_tests, name=test_name:
                 self.progress_label.config(text=f"Running {i}/{total}: {name}")
-            )
-
-            self.root.after(
-                0,
-                lambda i=index - 1: self.update_progress(i)
             )
 
             running_result = {
@@ -460,16 +452,10 @@ class PiTestBenchGUI:
         self.root.after(0, lambda: self.finish_test_sequence(total_tests))
 
     def setup_progress(self, total_tests):
-        self.progress_bar["maximum"] = total_tests
-        self.progress_bar["value"] = 0
-        self.progress_label.config(text="Starting tests...")
-
-    def update_progress(self, value):
-        self.progress_bar["value"] = value
+        self.progress_label.config(text=f"Starting {total_tests} test(s)...")
 
     def finish_test_sequence(self, total_tests):
         self.running = False
-        self.progress_bar["value"] = total_tests
 
         if self.stop_requested:
             self.progress_label.config(text="Stopped after current test.")
@@ -496,7 +482,10 @@ class PiTestBenchGUI:
             response_holder = {"value": False}
             event = threading.Event()
 
-            def ask_user():
+            def ask_user(
+                step_number=step_number,
+                step_text=step_text
+            ):
                 instruction_text = ""
 
                 if instructions:
@@ -548,7 +537,10 @@ class PiTestBenchGUI:
             response_holder = {"value": None}
             event = threading.Event()
 
-            def ask_user():
+            def ask_user(
+                step_number=step_number,
+                step_text=step_text
+            ):
                 response_holder["value"] = messagebox.askyesno(
                     "Manual Hardware Test",
                     (
@@ -792,40 +784,6 @@ class PiTestBenchGUI:
         self.details_text.insert("end", text)
         self.details_text.config(state="disabled")
 
-    def copy_selected_details(self):
-        selected_items = self.results_tree.selection()
-
-        if not selected_items:
-            messagebox.showwarning(
-                "No Result Selected",
-                "Select a result row first."
-            )
-            return
-
-        selected_item = selected_items[0]
-        values = self.results_tree.item(selected_item, "values")
-
-        if not values:
-            return
-
-        test_name = values[0]
-        category = values[1]
-        status = values[2]
-        timestamp = values[3]
-        details = self.result_details.get(selected_item, "")
-
-        copy_text = (
-            f"Test: {test_name}\n"
-            f"Category: {category}\n"
-            f"Status: {status}\n"
-            f"Time: {timestamp}\n\n"
-            f"Details:\n{details}"
-        )
-
-        self.root.clipboard_clear()
-        self.root.clipboard_append(copy_text)
-        self.root.update()
-
     def write_wrapped_details(self, file, details, width=78):
         if not details:
             file.write("No additional details recorded.\n")
@@ -866,7 +824,8 @@ class PiTestBenchGUI:
         if not children:
             messagebox.showwarning(
                 "No Results",
-                "There are no results to save."
+                "There are no results to save.",
+                parent=self.root
             )
             return
 
