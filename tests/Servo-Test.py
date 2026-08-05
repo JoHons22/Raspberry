@@ -1,137 +1,56 @@
-def show_touch_popup(
-    title,
-    message,
-    popup_type="yesno",
-    yes_text="Yes",
-    no_text="No",
-    ok_text="OK"
-):
-
-    result = {"value": None}
-
-    popup = tk.Tk()
-    popup.title(title)
-
-    screen_width = popup.winfo_screenwidth()
-    screen_height = popup.winfo_screenheight()
-
-    popup_width = min(740, max(400, screen_width - 60))
-    popup_height = min(340, max(280, screen_height - 120))
-
-    popup_x = max(0, int((screen_width - popup_width) / 2))
-    popup_y = max(0, int((screen_height - popup_height) / 2))
-
-    popup.geometry(f"{popup_width}x{popup_height}+{popup_x}+{popup_y}")
-    popup.resizable(False, False)
-    popup.attributes("-topmost", True)
-
-    style = ttk.Style()
-
-    try:
-        style.theme_use("clam")
-    except Exception:
-        pass
-
-    style.configure("TButton", font=("Arial", 11), padding=(6, 8))
-    style.configure("TLabel", font=("Arial", 10))
-
-    main_frame = ttk.Frame(popup, padding=6)
-    main_frame.pack(fill="both", expand=True)
-
-    title_label = ttk.Label(
-        main_frame,
-        text=title,
-        font=("Arial", 12, "bold"),
-        anchor="center"
-    )
-    title_label.pack(fill="x", pady=(0, 4))
-
-    # Buttons are intentionally placed near the top so they are always visible.
-    button_frame = ttk.Frame(main_frame)
-    button_frame.pack(fill="x", pady=(0, 6))
-
-    def close_with_value(value):
-        result["value"] = value
-        popup.quit()
-
-    if popup_type == "yesno":
-        button_frame.columnconfigure(0, weight=1)
-        button_frame.columnconfigure(1, weight=1)
-
-        yes_button = ttk.Button(
-            button_frame,
-            text=yes_text,
-            command=lambda: close_with_value(True)
-        )
-        yes_button.grid(row=0, column=0, sticky="ew", padx=(0, 4), ipady=8)
-
-        no_button = ttk.Button(
-            button_frame,
-            text=no_text,
-            command=lambda: close_with_value(False)
-        )
-        no_button.grid(row=0, column=1, sticky="ew", padx=(4, 0), ipady=8)
-
-        popup.bind("<Return>", lambda event: close_with_value(True))
-        popup.bind("<Escape>", lambda event: close_with_value(False))
-        yes_button.focus_set()
-
-    else:
-        button_frame.columnconfigure(0, weight=1)
-
-        ok_button = ttk.Button(
-            button_frame,
-            text=ok_text,
-            command=lambda: close_with_value(True)
-        )
-        ok_button.grid(row=0, column=0, sticky="ew", padx=80, ipady=8)
-
-        popup.bind("<Return>", lambda event: close_with_value(True))
-        popup.bind("<Escape>", lambda event: close_with_value(True))
-        ok_button.focus_set()
-
-    text_frame = ttk.Frame(main_frame)
-    text_frame.pack(fill="both", expand=True)
-
-    message_text = tk.Text(
-        text_frame,
-        wrap="word",
-        font=("Arial", 10),
-        height=8,
-        padx=6,
-        pady=6
-    )
-
-    text_scrollbar = ttk.Scrollbar(
-        text_frame,
-        orient="vertical",
-        command=message_text.yview
-    )
-
-    message_text.configure(yscrollcommand=text_scrollbar.set)
-    message_text.insert("1.0", message)
-    message_text.config(state="disabled")
-
-    message_text.pack(side="left", fill="both", expand=True)
-    text_scrollbar.pack(side="right", fill="y")
-
-    def on_close():
-        if popup_type == "yesno":
-            close_with_value(False)
-        else:
-            close_with_value(True)
-
-    popup.protocol("WM_DELETE_WINDOW", on_close)
-
-    popup.update_idletasks()
-    popup.lift()
-    popup.focus_force()
-
-    popup.mainloop()
-
-    try:
-        popup.destroy()
-    except Exception:
-        pass
-
-    return result["value"]
+"gpio": 12,
+"name": "PWM Test 1 - GPIO12",
+"switch_prompt": (
+            "Set the switch bank to route the servo signal line to GPIO12.\n\n"
+            "GPIO12 is BCM GPIO12, physical pin 32."
+            "Set ALL Switches to the DOWN position.\n\n"
+            "Then set ALL W[0-3] Switches to the UP position.\n\n"
+            "These Switches will remain the same for each of the following servo tests.\n\n"
+            "Set the switches for Servo PWM Test 1:\n\n"
+            "Set Switches M1 & M3 to the DOWN position.\n\n"
+            "PWM output being tested: BCM GPIO12\n\n"
+)
+},
+{
+"test_number": 2,
+"gpio": 18,
+"name": "PWM Test 2 - GPIO18",
+"switch_prompt": (
+            "Set the switch bank to route the servo signal line to GPIO18.\n\n"
+            "GPIO18 is BCM GPIO18, physical pin 12."
+            "Set the switches for Servo PWM Test 2.\n\n"
+            "Insure ALL W[0-3] Switches are set to the UP position.\n\n"
+            "Set the switches for Servo PWM Test 2:\n\n"
+            "Set Switches M2 to the DOWN position & M3 to the UP position.\n\n"
+            "PWM output being tested: BCM GPIO18\n\n"
+)
+},
+{
+"test_number": 3,
+"gpio": 13,
+"name": "PWM Test 3 - GPIO13",
+"switch_prompt": (
+            "Set the switch bank to route the servo signal line to GPIO13.\n\n"
+            "GPIO13 is BCM GPIO13, physical pin 33."
+            "Set the switches for Servo PWM Test 3.\n\n"
+            "Insure ALL W[0-3] Switches are set to the UP position.\n\n"
+            "Set the switches for Servo PWM Test 3:\n\n"
+            "Set Switches M1 to the UP position & M3 to the DOWN position.\n\n"
+            "PWM output being tested: BCM GPIO13\n\n"
+)
+},
+{
+"test_number": 4,
+"gpio": 19,
+"name": "PWM Test 4 - GPIO19",
+"switch_prompt": (
+            "Set the switch bank to route the servo signal line to GPIO19.\n\n"
+            "GPIO19 is BCM GPIO19, physical pin 35."
+            "Set the switches for Servo PWM Test 4.\n\n"
+            "Insure ALL W[0-3] Switches are set to the UP position.\n\n"
+            "Set the switches for Servo PWM Test 4:\n\n"
+            "Set Switches M2 & M3 to the UP position.\n\n"
+            "PWM output being tested: BCM GPIO19\n\n"
+)
+}
+]
